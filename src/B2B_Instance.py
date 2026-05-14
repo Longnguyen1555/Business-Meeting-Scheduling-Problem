@@ -368,30 +368,78 @@ class B2BSATModel:
             n_vars=max(self.vpool.top, cnf.nv),
             n_clauses=len(cnf.clauses),
         )
+        
     #Add constraints 20, 22-26
+    def commander_equals_one(self, cnf: CNF, lits: list[int], vpool: IDPool, group_size: int = 3) -> None:
+   
+        if not lits:
+            cnf.append([])
+            return
+
+        if len(lits) == 1:
+            cnf.append([lits[0]])
+            return
+
+        # Base case: direct exactly-one for a small group
+        if len(lits) <= group_size:
+            # at least one
+            cnf.append(list(lits))
+
+            # at most one
+            for i in range(len(lits)):
+                for j in range(i + 1, len(lits)):
+                    cnf.append([-lits[i], -lits[j]])
+            return
+
+        commanders: list[int] = []
+
+        for start in range(0, len(lits), group_size):
+            group = lits[start:start + group_size]
+
+            commander = vpool.id(("cmd_eq1", tuple(group)))
+            commanders.append(commander)
+
+            # commander -> at least one literal in this group
+            cnf.append([-commander] + group)
+
+            # each literal -> commander
+            for lit in group:
+                cnf.append([-lit, commander])
+
+            # at most one literal inside the group
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    cnf.append([-group[i], -group[j]])
+
+        # exactly one commander must be true
+        self.commander_equals_one(
+            cnf=cnf,
+            lits=commanders,
+            vpool=vpool,
+            group_size=group_size,
+        )
+    
     def _add_meeting_assignment(self, cnf: CNF) -> None:
         for m in range(self.inst.n_meetings):
             eligible = self.eligible_slots(m)
+
             if not eligible:
                 cnf.append([])
                 continue
 
             lits = [self.x(m, t) for t in eligible]
 
-            if len(lits) == 1:
-                cnf.append([lits[0]])
-            else:
-                enc = CardEnc.equals(
-                    lits=lits,
-                    bound=1,
-                    vpool=self.vpool,
-                    encoding=EncType.seqcounter,
-                )
-                cnf.extend(enc.clauses)
+            self.commander_equals_one(
+                cnf=cnf,
+                lits=lits,
+                vpool=self.vpool,
+                group_size=3,
+            )
 
             all_slots = set(range(self.inst.n_total_slots))
             for t in sorted(all_slots - set(eligible)):
-                cnf.append([-self.x(m, t)])                                         
+                cnf.append([-self.x(m, t)])             
+                            
       
     #Add constraints (19) - At most one meeting - participant a time
     def _add_participant_collision_constraints(self, cnf: CNF) -> None:
@@ -515,7 +563,7 @@ class B2BSATModel:
                     lits=used_lits,
                     bound=target,
                     vpool=self.vpool,
-                    encoding=EncType.seqcounter,
+                    encoding=EncType.cardnetwrk,
                 )
                 cnf.extend(enc.clauses)
 
@@ -561,7 +609,7 @@ class B2BSATModel:
                 lits=lits,
                 bound=2 * self.inst.n_tables,
                 vpool=self.vpool,
-                encoding=EncType.seqcounter,
+                encoding=EncType.cardnetwrk,
             )
             cnf.extend(enc.clauses)
 
