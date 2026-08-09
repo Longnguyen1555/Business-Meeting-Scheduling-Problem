@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-correctness-development",
+  "description": "Development-only RC2/CaDiCaL gate; never use these timings in the paper.",
+  "timeout_seconds": 120,
+  "controller_grace_seconds": 30,
+  "run_order_seed": 20260808,
+  "require_clean_worktree": false,
+  "datasets": [
+    {
+      "id": "official_12_content_smoke",
+      "manifest": "instances_manifest.csv",
+      "family": "all",
+      "instance_names": [
+        "forum-13.original",
+        "forum-13crafb.original",
+        "forum-13crafc.original",
+        "forum-14.forb0003",
+        "forumt-14.forb0003",
+        "forumt-14crafc.forb0003",
+        "forumt-14crafd.fixed020-Forb",
+        "forumt-14crafe.fixed020-Forb",
+        "tic-12.fixed020-Forb",
+        "tic-12crafc.prec15",
+        "tic-13.prec15",
+        "tic-13crafb.prec15"
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "objective_correctness",
+      "datasets": ["official_12_content_smoke"],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "id": "dev_org_full_bg_d2_rc2",
+          "executor": "org_bg_d2",
+          "objective_mode": "bg_d2",
+          "backend": "rc2"
+        },
+        {
+          "id": "dev_compact_full_bg_d2_rc2",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "rc2",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_compact_reduced_bg_d2_rc2",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "rc2",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_incremental_reduced_bg_d2",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_multiple_reduced_bg_d2",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_compact_full_ir_is_rc2",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "rc2",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_compact_reduced_ir_is_rc2",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "rc2",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_incremental_reduced_ir_is",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "dev_multiple_reduced_ir_is",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "pairwise",
+          "precedence_graph": "direct",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

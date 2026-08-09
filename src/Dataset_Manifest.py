@@ -22,6 +22,7 @@ REPOSITORY_DATA_DIRECTORIES = (
 )
 MANIFEST_FIELDS = (
     "content_id",
+    "base_lineage_id",
     "sha256",
     "canonical_instance",
     "canonical_run_path",
@@ -43,6 +44,24 @@ MANIFEST_FIELDS = (
     "dataset_archive_url",
     "dataset_archive_sha256",
 )
+
+
+def base_lineage_id(instance_name: str) -> str:
+    """Return the source-instance lineage shared by all constraint variants."""
+
+    name = Path(instance_name).name
+    if name.lower().endswith(".dzn"):
+        name = name[:-4]
+    base = re.sub(
+        r"\.(?:original|forb\d+|fixed\d+-forb|prec\d+)$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
+    if not normalized:
+        raise ValueError(f"Cannot derive base lineage from {instance_name!r}")
+    return f"b2b-lineage-{normalized}"
 
 
 def file_sha256(path: Path) -> str:
@@ -143,6 +162,7 @@ def build_manifest_rows(
         rows.append(
             {
                 "content_id": f"b2b-{digest[:16]}",
+                "base_lineage_id": base_lineage_id(canonical_source.name),
                 "sha256": digest,
                 "canonical_instance": canonical_source.stem,
                 "canonical_run_path": _relative(run_path, repo_root),

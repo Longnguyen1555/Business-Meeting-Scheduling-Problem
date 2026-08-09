@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from pysat.card import CardEnc, EncType
 
 from B2B_Instance import B2BInstance, B2BSATModel, B2BSolutionStats, read_instance
+from Journal_Metrics import objective_metric_errors
 from SAT_Backend import (
     create_sat_solver,
     normalize_sat_backend,
@@ -29,11 +31,10 @@ def _new_solver(clauses: list[list[int]], preferred: str = "cadical"):
 
 
 class B2BMultipleSATSolver:
-    """Repeated-SAT optimization of the internal-idle-slot range over P*.
+    """Fresh-solver sequential optimization of exact objective tiers.
 
-    Every candidate bound is solved in a fresh SAT solver. The objective is
-    only ``max_{p in P*} B(p) - min_{p in P*} B(p)``; no hard objective cap or
-    secondary Lexicographic objective is generated.
+    Every candidate bound is solved in a fresh SAT solver. After proving one
+    tier optimal, an exact upper bound is added before the next tier.
     """
 
     def __init__(
@@ -47,6 +48,7 @@ class B2BMultipleSATSolver:
         precedence_encoding: str | None = None,
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
+        objective_mode: str = "ir",
     ) -> None:
         if (
             precedence_mode is None
@@ -63,6 +65,7 @@ class B2BMultipleSATSolver:
             encoding_variant=encoding_variant,
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
+            objective_mode=objective_mode,
         )
         self.artifacts = self.model.build_base_cnf()
         self.solver_name = normalize_sat_backend(solver_name)
@@ -74,6 +77,8 @@ class B2BMultipleSATSolver:
         self.optimizer_added_clauses_peak = 0
         self.optimizer_added_literals_peak = 0
         self.optimizer_added_clauses_cumulative = 0
+        self.objective_phase_seconds: list[float] = []
+        self.objective_phase_calls: list[int] = []
 
     def _pack_result(
         self,
@@ -83,6 +88,7 @@ class B2BMultipleSATSolver:
         checks: list[str] | None = None,
         *,
         proven_optimum: int | None = None,
+        proven_objective_vector: tuple[int, ...] | None = None,
     ) -> dict[str, Any]:
         return {
             "status": status,
@@ -100,6 +106,7 @@ class B2BMultipleSATSolver:
             "domain_mode": self.artifacts.domain_mode,
             "domain_filter_graph": self.artifacts.domain_filter_graph,
             "objective": self.artifacts.objective_name,
+            "objective_mode": self.artifacts.objective_mode,
             "objective_participant_count": len(
                 self.artifacts.objective_participants
             ),
@@ -107,10 +114,33 @@ class B2BMultipleSATSolver:
                 participant + 1
                 for participant in self.artifacts.objective_participants
             ),
+            "objective_vector": (
+                stats.objective_vector
+                if stats is not None
+                else proven_objective_vector
+            ),
             "objective_value": (
-                stats.objective_gap if stats is not None else proven_optimum
+                stats.objective_vector[0]
+                if stats is not None
+                else proven_optimum
+            ),
+            "primary_objective_value": (
+                stats.objective_vector[0] if stats is not None else proven_optimum
+            ),
+            "secondary_objective_value": (
+                stats.objective_vector[1]
+                if stats is not None and len(stats.objective_vector) > 1
+                else None
+            ),
+            "tertiary_objective_value": (
+                stats.objective_vector[2]
+                if stats is not None and len(stats.objective_vector) > 2
+                else None
             ),
             "proven_optimum": proven_optimum,
+            "proven_objective_vector": proven_objective_vector,
+            "objective_phase_seconds": tuple(self.objective_phase_seconds),
+            "objective_phase_calls": tuple(self.objective_phase_calls),
             "assignment": assignment,
             "stats": stats,
             "validation_errors": checks or [],
@@ -119,7 +149,9 @@ class B2BMultipleSATSolver:
             "n_hard_clauses": self.artifacts.n_clauses,
             "n_soft": 0,
             "n_soft_clauses": 0,
-            "n_objective_lits": len(self.artifacts.objective_lits),
+            "n_objective_lits": sum(
+                len(tier.literals) for tier in self.artifacts.objective_tiers
+            ),
             "full_schedule_candidates": (
                 self.artifacts.full_schedule_candidates
             ),
@@ -179,6 +211,7 @@ class B2BMultipleSATSolver:
         sat_model: list[int],
         *,
         imposed_bound: int | None = None,
+        imposed_bounds: tuple[int, ...] | None = None,
     ) -> tuple[list[int], B2BSolutionStats, list[str]]:
         assignment = self.model.decode_assignment(sat_model)
         stats = self.model.compute_stats(assignment)
@@ -188,35 +221,49 @@ class B2BMultipleSATSolver:
                 sat_model,
                 stats,
                 imposed_bound=imposed_bound,
+                imposed_bounds=imposed_bounds,
+            )
+        )
+        checks.extend(
+            objective_metric_errors(
+                self.inst,
+                assignment,
+                objective_mode=self.artifacts.objective_mode,
+                encoded_vector=self.model.encoded_objective_vector(sat_model),
             )
         )
         return assignment, stats, checks
 
-    def _bound_clauses(self, bound: int) -> list[list[int]]:
-        lits = self.artifacts.objective_lits
+    def _bound_clauses(
+        self,
+        lits: tuple[int, ...],
+        bound: int,
+        *,
+        top_id: int,
+    ) -> tuple[list[list[int]], int]:
         if bound < 0:
             clauses = [[]]
-            top_id = self.artifacts.n_vars
+            encoded_top_id = top_id
         elif not lits or bound >= len(lits):
             clauses = []
-            top_id = self.artifacts.n_vars
+            encoded_top_id = top_id
         elif bound == 0:
             clauses = [[-lit] for lit in lits]
-            top_id = self.artifacts.n_vars
+            encoded_top_id = top_id
         else:
             encoding = CardEnc.atmost(
-                lits=lits,
+                lits=list(lits),
                 bound=bound,
-                top_id=self.artifacts.n_vars,
+                top_id=top_id,
                 encoding=EncType.seqcounter,
             )
             clauses = encoding.clauses
-            top_id = encoding.nv
+            encoded_top_id = encoding.nv
 
         self.n_bound_encodings += 1
         self.optimizer_added_variables_peak = max(
             self.optimizer_added_variables_peak,
-            max(0, top_id - self.artifacts.n_vars),
+            max(0, encoded_top_id - self.artifacts.n_vars),
         )
         self.optimizer_added_clauses_peak = max(
             self.optimizer_added_clauses_peak,
@@ -227,14 +274,15 @@ class B2BMultipleSATSolver:
             sum(len(clause) for clause in clauses),
         )
         self.optimizer_added_clauses_cumulative += len(clauses)
-        return clauses
+        return clauses, encoded_top_id
 
     def solve(
         self,
         verbose: bool = False,
-        incumbent_callback: Callable[[int], None] | None = None,
+        incumbent_callback: Callable[[int | tuple[int, ...]], None] | None = None,
     ) -> dict[str, Any]:
-        with _new_solver(self.artifacts.cnf.clauses, self.solver_name) as solver:
+        base_clauses = self.artifacts.cnf.clauses
+        with _new_solver(base_clauses, self.solver_name) as solver:
             self.n_optimizer_calls += 1
             if not solver.solve():
                 return self._pack_result("UNSAT", None, None)
@@ -244,68 +292,101 @@ class B2BMultipleSATSolver:
         if checks:
             return self._pack_result("ERROR", best_assignment, best_stats, checks)
 
-        best_objective = best_stats.objective_gap
+        best_vector = best_stats.objective_vector
         if incumbent_callback is not None:
-            incumbent_callback(best_objective)
+            incumbent_callback(best_vector[0] if len(best_vector) == 1 else best_vector)
         if verbose:
-            print(f"[MultipleSAT] initial IdleRange(P*)={best_objective}")
-        if best_objective == 0:
-            return self._pack_result(
-                "OPTIMAL",
-                best_assignment,
-                best_stats,
-                proven_optimum=0,
+            print(f"[MultipleSAT] initial objective vector={best_vector}")
+
+        fixed_clauses: list[list[int]] = []
+        fixed_top_id = self.artifacts.n_vars
+        proven: list[int] = []
+        for phase_index, tier in enumerate(self.artifacts.objective_tiers):
+            phase_started = time.perf_counter()
+            calls_before = self.n_optimizer_calls
+            current = best_stats.objective_vector[phase_index]
+            low, high = 0, current - 1
+            while low <= high:
+                bound = (low + high) // 2
+                bound_clauses, _ = self._bound_clauses(
+                    tier.literals,
+                    bound,
+                    top_id=fixed_top_id,
+                )
+                with _new_solver(
+                    [*base_clauses, *fixed_clauses, *bound_clauses],
+                    self.solver_name,
+                ) as solver:
+                    self.n_optimizer_calls += 1
+                    satisfiable = solver.solve()
+                    if verbose:
+                        print(
+                            f"[MultipleSAT] {tier.name} <= {bound}: "
+                            f"{'SAT' if satisfiable else 'UNSAT'}"
+                        )
+                    if satisfiable:
+                        candidate_model = solver.get_model()
+                        candidate_assignment, candidate_stats, candidate_checks = (
+                            self._evaluate_sat_model(
+                                candidate_model,
+                                imposed_bounds=tuple([*proven, bound]),
+                            )
+                        )
+                        if candidate_checks:
+                            return self._pack_result(
+                                "ERROR",
+                                candidate_assignment,
+                                candidate_stats,
+                                candidate_checks,
+                            )
+                        best_assignment = candidate_assignment
+                        best_stats = candidate_stats
+                        if incumbent_callback is not None:
+                            vector = best_stats.objective_vector
+                            incumbent_callback(
+                                vector[0] if len(vector) == 1 else vector
+                            )
+                        high = bound - 1
+                    else:
+                        low = bound + 1
+
+            optimum = low
+            proven.append(optimum)
+            phase_fix, fixed_top_id = self._bound_clauses(
+                tier.literals,
+                optimum,
+                top_id=fixed_top_id,
+            )
+            fixed_clauses.extend(phase_fix)
+            self.objective_phase_seconds.append(
+                time.perf_counter() - phase_started
+            )
+            self.objective_phase_calls.append(
+                self.n_optimizer_calls - calls_before
             )
 
-        low, high = 0, best_objective - 1
-        while low <= high:
-            bound = (low + high) // 2
-            with _new_solver(self.artifacts.cnf.clauses, self.solver_name) as solver:
-                solver.append_formula(self._bound_clauses(bound))
-                self.n_optimizer_calls += 1
-                satisfiable = solver.solve()
-                if verbose:
-                    print(
-                        f"[MultipleSAT] IdleRange(P*) <= {bound}: "
-                        f"{'SAT' if satisfiable else 'UNSAT'}"
-                    )
-                if satisfiable:
-                    candidate_model = solver.get_model()
-                    (
-                        candidate_assignment,
-                        candidate_stats,
-                        candidate_checks,
-                    ) = self._evaluate_sat_model(
-                        candidate_model,
-                        imposed_bound=bound,
-                    )
-                    if candidate_checks:
-                        return self._pack_result(
-                            "ERROR",
-                            candidate_assignment,
-                            candidate_stats,
-                            candidate_checks,
-                        )
-                    best_assignment = candidate_assignment
-                    best_stats = candidate_stats
-                    if incumbent_callback is not None:
-                        incumbent_callback(best_stats.objective_gap)
-                    high = bound - 1
-                else:
-                    low = bound + 1
-
         final_checks = self.model.validate_assignment(best_assignment)
-        if best_stats.objective_gap != low:
+        final_checks.extend(
+            objective_metric_errors(
+                self.inst,
+                best_assignment,
+                objective_mode=self.artifacts.objective_mode,
+                encoded_vector=best_stats.objective_vector,
+            )
+        )
+        if best_stats.objective_vector != tuple(proven):
             final_checks.append(
                 "optimization mismatch: "
-                f"proven optimum={low}, schedule gap={best_stats.objective_gap}"
+                f"proven vector={tuple(proven)}, "
+                f"schedule vector={best_stats.objective_vector}"
             )
         return self._pack_result(
             "OPTIMAL" if not final_checks else "ERROR",
             best_assignment,
             best_stats,
             final_checks,
-            proven_optimum=low,
+            proven_optimum=proven[0],
+            proven_objective_vector=tuple(proven),
         )
 
 
@@ -320,6 +401,7 @@ def solve_b2b(
     precedence_encoding: str | None = None,
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
+    objective_mode: str = "ir",
 ) -> dict[str, Any]:
     return B2BMultipleSATSolver(
         instance_or_path=instance_or_path,
@@ -330,6 +412,7 @@ def solve_b2b(
         solver_name=solver_name,
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
+        objective_mode=objective_mode,
     ).solve(verbose=verbose)
 
 

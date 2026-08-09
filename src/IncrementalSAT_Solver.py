@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from pysat.card import ITotalizer
 
 from B2B_Instance import B2BInstance, B2BSATModel, B2BSolutionStats, read_instance
+from Journal_Metrics import objective_metric_errors
 from SAT_Backend import (
     create_sat_solver,
     normalize_sat_backend,
@@ -29,11 +31,11 @@ def _new_solver(clauses: list[list[int]], preferred: str = "cadical"):
 
 
 class B2BIncrementalSATSolver:
-    """Incremental SAT optimization of the idle-slot range over P*.
+    """Learned-clause-preserving optimization of exact objective tiers.
 
-    One SAT solver is retained while an incremental totalizer imposes upper
-    bounds on ``max_{p in P*} B(p) - min_{p in P*} B(p)`` through assumptions.
-    No hard objective cap or secondary Lexicographic objective is generated.
+    One SAT solver is retained across every bound and every lexicographic
+    phase. Each proven tier optimum becomes a permanent hard upper bound before
+    the next totalizer is appended.
     """
 
     def __init__(
@@ -47,6 +49,7 @@ class B2BIncrementalSATSolver:
         precedence_encoding: str | None = None,
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
+        objective_mode: str = "ir",
     ) -> None:
         if (
             precedence_mode is None
@@ -63,6 +66,7 @@ class B2BIncrementalSATSolver:
             encoding_variant=encoding_variant,
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
+            objective_mode=objective_mode,
         )
         self.artifacts = self.model.build_base_cnf()
         self.solver_name = normalize_sat_backend(solver_name)
@@ -74,6 +78,8 @@ class B2BIncrementalSATSolver:
         self.optimizer_added_clauses_peak = 0
         self.optimizer_added_literals_peak = 0
         self.optimizer_added_clauses_cumulative = 0
+        self.objective_phase_seconds: list[float] = []
+        self.objective_phase_calls: list[int] = []
 
     def _pack_result(
         self,
@@ -83,6 +89,7 @@ class B2BIncrementalSATSolver:
         checks: list[str] | None = None,
         *,
         proven_optimum: int | None = None,
+        proven_objective_vector: tuple[int, ...] | None = None,
     ) -> dict[str, Any]:
         return {
             "status": status,
@@ -100,6 +107,7 @@ class B2BIncrementalSATSolver:
             "domain_mode": self.artifacts.domain_mode,
             "domain_filter_graph": self.artifacts.domain_filter_graph,
             "objective": self.artifacts.objective_name,
+            "objective_mode": self.artifacts.objective_mode,
             "objective_participant_count": len(
                 self.artifacts.objective_participants
             ),
@@ -107,10 +115,33 @@ class B2BIncrementalSATSolver:
                 participant + 1
                 for participant in self.artifacts.objective_participants
             ),
+            "objective_vector": (
+                stats.objective_vector
+                if stats is not None
+                else proven_objective_vector
+            ),
             "objective_value": (
-                stats.objective_gap if stats is not None else proven_optimum
+                stats.objective_vector[0]
+                if stats is not None
+                else proven_optimum
+            ),
+            "primary_objective_value": (
+                stats.objective_vector[0] if stats is not None else proven_optimum
+            ),
+            "secondary_objective_value": (
+                stats.objective_vector[1]
+                if stats is not None and len(stats.objective_vector) > 1
+                else None
+            ),
+            "tertiary_objective_value": (
+                stats.objective_vector[2]
+                if stats is not None and len(stats.objective_vector) > 2
+                else None
             ),
             "proven_optimum": proven_optimum,
+            "proven_objective_vector": proven_objective_vector,
+            "objective_phase_seconds": tuple(self.objective_phase_seconds),
+            "objective_phase_calls": tuple(self.objective_phase_calls),
             "assignment": assignment,
             "stats": stats,
             "validation_errors": checks or [],
@@ -119,7 +150,9 @@ class B2BIncrementalSATSolver:
             "n_hard_clauses": self.artifacts.n_clauses,
             "n_soft": 0,
             "n_soft_clauses": 0,
-            "n_objective_lits": len(self.artifacts.objective_lits),
+            "n_objective_lits": sum(
+                len(tier.literals) for tier in self.artifacts.objective_tiers
+            ),
             "full_schedule_candidates": (
                 self.artifacts.full_schedule_candidates
             ),
@@ -179,6 +212,7 @@ class B2BIncrementalSATSolver:
         sat_model: list[int],
         *,
         imposed_bound: int | None = None,
+        imposed_bounds: tuple[int, ...] | None = None,
     ) -> tuple[list[int], B2BSolutionStats, list[str]]:
         assignment = self.model.decode_assignment(sat_model)
         stats = self.model.compute_stats(assignment)
@@ -188,6 +222,15 @@ class B2BIncrementalSATSolver:
                 sat_model,
                 stats,
                 imposed_bound=imposed_bound,
+                imposed_bounds=imposed_bounds,
+            )
+        )
+        checks.extend(
+            objective_metric_errors(
+                self.inst,
+                assignment,
+                objective_mode=self.artifacts.objective_mode,
+                encoded_vector=self.model.encoded_objective_vector(sat_model),
             )
         )
         return assignment, stats, checks
@@ -195,7 +238,7 @@ class B2BIncrementalSATSolver:
     def solve(
         self,
         verbose: bool = False,
-        incumbent_callback: Callable[[int], None] | None = None,
+        incumbent_callback: Callable[[int | tuple[int, ...]], None] | None = None,
     ) -> dict[str, Any]:
         with _new_solver(self.artifacts.cnf.clauses, self.solver_name) as solver:
             self.n_optimizer_calls += 1
@@ -209,95 +252,133 @@ class B2BIncrementalSATSolver:
             if checks:
                 return self._pack_result("ERROR", best_assignment, best_stats, checks)
 
-            best_objective = best_stats.objective_gap
+            best_vector = best_stats.objective_vector
             if incumbent_callback is not None:
-                incumbent_callback(best_objective)
+                incumbent_callback(
+                    best_vector[0] if len(best_vector) == 1 else best_vector
+                )
             if verbose:
-                print(f"[IncrementalSAT] initial IdleRange(P*)={best_objective}")
-            if best_objective == 0:
-                return self._pack_result(
-                    "OPTIMAL",
-                    best_assignment,
-                    best_stats,
-                    proven_optimum=0,
-                )
+                print(f"[IncrementalSAT] initial objective vector={best_vector}")
 
-            objective_lits = self.artifacts.objective_lits
-            if not objective_lits:
-                return self._pack_result(
-                    "ERROR",
-                    best_assignment,
-                    best_stats,
-                    ["nonzero schedule gap but no objective literals were generated"],
-                )
+            proven: list[int] = []
+            next_top_id = self.artifacts.n_vars
+            for phase_index, tier in enumerate(self.artifacts.objective_tiers):
+                phase_started = time.perf_counter()
+                calls_before = self.n_optimizer_calls
+                current = best_stats.objective_vector[phase_index]
 
-            with ITotalizer(
-                lits=objective_lits,
-                ubound=best_objective,
-                top_id=self.artifacts.n_vars,
-            ) as totalizer:
-                self.n_bound_encodings = 1
-                self.optimizer_added_variables_peak = max(
-                    0,
-                    totalizer.top_id - self.artifacts.n_vars,
-                )
-                self.optimizer_added_clauses_peak = len(totalizer.cnf.clauses)
-                self.optimizer_added_literals_peak = sum(
-                    len(clause) for clause in totalizer.cnf.clauses
-                )
-                self.optimizer_added_clauses_cumulative = len(
-                    totalizer.cnf.clauses
-                )
-                solver.append_formula(totalizer.cnf.clauses)
-                low, high = 0, best_objective - 1
+                if not tier.literals and current != 0:
+                    return self._pack_result(
+                        "ERROR",
+                        best_assignment,
+                        best_stats,
+                        [f"nonzero {tier.name} but no tier literals were generated"],
+                    )
 
-                while low <= high:
-                    bound = (low + high) // 2
-                    # rhs[bound] means at least bound+1 objective literals are true.
-                    self.n_optimizer_calls += 1
-                    satisfiable = solver.solve(assumptions=[-totalizer.rhs[bound]])
-                    if verbose:
-                        print(
-                            f"[IncrementalSAT] IdleRange(P*) <= {bound}: "
-                            f"{'SAT' if satisfiable else 'UNSAT'}"
+                if current == 0:
+                    solver.append_formula([[-literal] for literal in tier.literals])
+                    optimum = 0
+                else:
+                    with ITotalizer(
+                        lits=list(tier.literals),
+                        ubound=current,
+                        top_id=next_top_id,
+                    ) as totalizer:
+                        self.n_bound_encodings += 1
+                        next_top_id = totalizer.top_id
+                        added_clauses = len(totalizer.cnf.clauses)
+                        added_literals = sum(
+                            len(clause) for clause in totalizer.cnf.clauses
                         )
-                    if satisfiable:
-                        candidate_model = solver.get_model()
-                        (
-                            candidate_assignment,
-                            candidate_stats,
-                            candidate_checks,
-                        ) = self._evaluate_sat_model(
-                            candidate_model,
-                            imposed_bound=bound,
+                        self.optimizer_added_variables_peak = max(
+                            self.optimizer_added_variables_peak,
+                            next_top_id - self.artifacts.n_vars,
                         )
-                        if candidate_checks:
-                            return self._pack_result(
-                                "ERROR",
-                                candidate_assignment,
-                                candidate_stats,
-                                candidate_checks,
+                        self.optimizer_added_clauses_peak = max(
+                            self.optimizer_added_clauses_peak,
+                            added_clauses,
+                        )
+                        self.optimizer_added_literals_peak = max(
+                            self.optimizer_added_literals_peak,
+                            added_literals,
+                        )
+                        self.optimizer_added_clauses_cumulative += added_clauses
+                        solver.append_formula(totalizer.cnf.clauses)
+                        low, high = 0, current - 1
+
+                        while low <= high:
+                            bound = (low + high) // 2
+                            self.n_optimizer_calls += 1
+                            satisfiable = solver.solve(
+                                assumptions=[-totalizer.rhs[bound]]
                             )
-                        best_assignment = candidate_assignment
-                        best_stats = candidate_stats
-                        if incumbent_callback is not None:
-                            incumbent_callback(best_stats.objective_gap)
-                        high = bound - 1
-                    else:
-                        low = bound + 1
+                            if verbose:
+                                print(
+                                    f"[IncrementalSAT] {tier.name} <= {bound}: "
+                                    f"{'SAT' if satisfiable else 'UNSAT'}"
+                                )
+                            if satisfiable:
+                                candidate_model = solver.get_model()
+                                (
+                                    candidate_assignment,
+                                    candidate_stats,
+                                    candidate_checks,
+                                ) = self._evaluate_sat_model(
+                                    candidate_model,
+                                    imposed_bounds=tuple([*proven, bound]),
+                                )
+                                if candidate_checks:
+                                    return self._pack_result(
+                                        "ERROR",
+                                        candidate_assignment,
+                                        candidate_stats,
+                                        candidate_checks,
+                                    )
+                                best_assignment = candidate_assignment
+                                best_stats = candidate_stats
+                                if incumbent_callback is not None:
+                                    vector = best_stats.objective_vector
+                                    incumbent_callback(
+                                        vector[0] if len(vector) == 1 else vector
+                                    )
+                                high = bound - 1
+                            else:
+                                low = bound + 1
+
+                        optimum = low
+                        if optimum < len(totalizer.rhs):
+                            solver.add_clause([-totalizer.rhs[optimum]])
+
+                proven.append(optimum)
+                self.objective_phase_seconds.append(
+                    time.perf_counter() - phase_started
+                )
+                self.objective_phase_calls.append(
+                    self.n_optimizer_calls - calls_before
+                )
 
             final_checks = self.model.validate_assignment(best_assignment)
-            if best_stats.objective_gap != low:
+            final_checks.extend(
+                objective_metric_errors(
+                    self.inst,
+                    best_assignment,
+                    objective_mode=self.artifacts.objective_mode,
+                    encoded_vector=best_stats.objective_vector,
+                )
+            )
+            if best_stats.objective_vector != tuple(proven):
                 final_checks.append(
                     "optimization mismatch: "
-                    f"proven optimum={low}, schedule gap={best_stats.objective_gap}"
+                    f"proven vector={tuple(proven)}, "
+                    f"schedule vector={best_stats.objective_vector}"
                 )
             return self._pack_result(
                 "OPTIMAL" if not final_checks else "ERROR",
                 best_assignment,
                 best_stats,
                 final_checks,
-                proven_optimum=low,
+                proven_optimum=proven[0],
+                proven_objective_vector=tuple(proven),
             )
 
 
@@ -312,6 +393,7 @@ def solve_b2b(
     precedence_encoding: str | None = None,
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
+    objective_mode: str = "ir",
 ) -> dict[str, Any]:
     return B2BIncrementalSATSolver(
         instance_or_path=instance_or_path,
@@ -322,6 +404,7 @@ def solve_b2b(
         solver_name=solver_name,
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
+        objective_mode=objective_mode,
     ).solve(verbose=verbose)
 
 

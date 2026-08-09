@@ -23,7 +23,7 @@ from B2B_Instance import (
     read_instance,
     validate_schedule_assignment,
 )
-from Dataset_Manifest import MANIFEST_FIELDS, file_sha256
+from Dataset_Manifest import MANIFEST_FIELDS, base_lineage_id, file_sha256
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -362,6 +362,7 @@ def _runner_manifest_row(
 ) -> dict[str, Any]:
     return {
         "content_id": f"b2b-stress-{digest[:16]}",
+        "base_lineage_id": base_lineage_id(output_path.name),
         "sha256": digest,
         "canonical_instance": output_path.stem,
         "canonical_run_path": output_path.name,

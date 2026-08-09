@@ -617,6 +617,12 @@ class FullDomainEncodingTests(unittest.TestCase):
             precedence_graph="direct",
             domain_filter_graph="distance_closure",
         ).build_base_cnf()
+        direct = B2BSATModel(
+            inst,
+            precedence_encoding="pairwise",
+            precedence_graph="direct",
+            domain_filter_graph="direct",
+        ).build_base_cnf()
 
         self.assertEqual(default.domain_filter_graph, "distance_closure")
         self.assertEqual(default.cnf.clauses, explicit.cnf.clauses)
@@ -624,6 +630,10 @@ class FullDomainEncodingTests(unittest.TestCase):
             default.reduced_schedule_candidates,
             explicit.reduced_schedule_candidates,
         )
+        self.assertEqual(direct.domain_filter_iterations, 3)
+        self.assertEqual(explicit.domain_filter_iterations, 2)
+        self.assertGreaterEqual(direct.domain_filter_seconds, 0.0)
+        self.assertGreaterEqual(explicit.domain_filter_seconds, 0.0)
 
     def test_all_optimizers_accept_the_two_new_factorial_cells(self) -> None:
         inst = _restricted_instance()

@@ -204,11 +204,11 @@ class IdleRangeParticipantSetTests(unittest.TestCase):
         self.assertEqual(stats.idle_range, 0)
         self.assertEqual(stats.all_participant_idle_range, 3)
 
-    def test_removed_fairness_and_lexicographic_options_are_rejected(self) -> None:
+    def test_removed_fairness_and_unknown_objective_options_are_rejected(self) -> None:
         inst = _instance_with_single_meeting_participant()
         with self.assertRaises(TypeError):
             B2BSATModel(inst, fairness_limit=1)
-        with self.assertRaises(TypeError):
+        with self.assertRaises(ValueError):
             B2BMaxSATSolver(inst, objective_mode="lexicographic")
 
     def test_single_meeting_participant_has_no_break_threshold_encoding(self) -> None:

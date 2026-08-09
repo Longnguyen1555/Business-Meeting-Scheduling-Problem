@@ -13,7 +13,14 @@ from pysat import __version__ as pysat_version
 from pysat.examples.rc2 import RC2
 from pysat.formula import WCNF
 
-from B2B_Instance import B2BInstance, B2BSATModel, B2BSolutionStats, read_instance
+from B2B_Instance import (
+    VALID_OBJECTIVE_MODES,
+    B2BInstance,
+    B2BSATModel,
+    B2BSolutionStats,
+    read_instance,
+)
+from Journal_Metrics import objective_metric_errors
 
 
 MaxSATBackend = Literal["uwrmaxsat", "rc2"]
@@ -139,14 +146,14 @@ def _subprocess_text(value: str | bytes | None) -> str:
 
 
 class B2BMaxSATSolver:
-    """MaxSAT optimization of the internal-idle-slot range over P*.
+    """Exact one-shot MaxSAT optimization of a journal objective mode.
 
     The true count of the shared model's objective literals is exactly
     ``max_{p in P*} B(p) - min_{p in P*} B(p)``, where
     ``P* = {p : |M_p| >= 2}``. UWrMaxSAT is the required default backend and a
     missing executable is an immediate error. RC2 remains available only when
-    selected explicitly for development checks. No hard objective cap or
-    secondary lexicographic objective is included.
+    selected explicitly for development checks. Lexicographic modes use exact
+    dominating weights recorded in the shared objective tiers.
     """
 
     def __init__(
@@ -159,11 +166,14 @@ class B2BMaxSATSolver:
         precedence_encoding: str | None = None,
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
+        objective_mode: str = "ir",
         backend: MaxSATBackend | str | None = None,
         uwrmaxsat_bin: str | Path | None = None,
         uwrmaxsat_sha256: str | None = None,
         uwrmaxsat_timeout: float | None = None,
     ) -> None:
+        if objective_mode not in VALID_OBJECTIVE_MODES:
+            raise ValueError(f"Unknown objective_mode={objective_mode!r}")
         selected_backend = (
             backend or os.environ.get("B2B_MAXSAT_BACKEND", "uwrmaxsat")
         ).lower()
@@ -250,6 +260,7 @@ class B2BMaxSATSolver:
             encoding_variant=encoding_variant,
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
+            objective_mode=objective_mode,
         )
         self.artifacts = self.model.build_base_cnf()
 
@@ -268,6 +279,18 @@ class B2BMaxSATSolver:
         solver_message: str = "",
         solver_command: str = "",
     ) -> dict[str, Any]:
+        single_tier_cost = (
+            solver_cost
+            if stats is None
+            and solver_cost is not None
+            and len(self.artifacts.objective_tiers) == 1
+            else None
+        )
+        objective_vector = (
+            stats.objective_vector
+            if stats is not None
+            else ((single_tier_cost,) if single_tier_cost is not None else None)
+        )
         return {
             "status": status,
             "solver": "MaxSAT",
@@ -298,6 +321,7 @@ class B2BMaxSATSolver:
             "domain_mode": self.artifacts.domain_mode,
             "domain_filter_graph": self.artifacts.domain_filter_graph,
             "objective": self.artifacts.objective_name,
+            "objective_mode": self.artifacts.objective_mode,
             "objective_participant_count": len(
                 self.artifacts.objective_participants
             ),
@@ -305,20 +329,57 @@ class B2BMaxSATSolver:
                 participant + 1
                 for participant in self.artifacts.objective_participants
             ),
+            "objective_vector": objective_vector,
             "objective_value": (
-                stats.objective_gap if stats is not None else solver_cost
+                stats.objective_vector[0]
+                if stats is not None
+                else single_tier_cost
             ),
-            "proven_optimum": solver_cost if status == "OPTIMAL" else None,
+            "primary_objective_value": (
+                stats.objective_vector[0]
+                if stats is not None
+                else single_tier_cost
+            ),
+            "secondary_objective_value": (
+                stats.objective_vector[1]
+                if stats is not None and len(stats.objective_vector) > 1
+                else None
+            ),
+            "tertiary_objective_value": (
+                stats.objective_vector[2]
+                if stats is not None and len(stats.objective_vector) > 2
+                else None
+            ),
+            "proven_optimum": (
+                stats.objective_vector[0]
+                if status == "OPTIMAL" and stats is not None
+                else None
+            ),
+            "proven_objective_vector": (
+                stats.objective_vector
+                if status == "OPTIMAL" and stats is not None
+                else None
+            ),
             "solver_cost": solver_cost,
+            "lexicographic_scalar_cost": solver_cost,
+            "objective_tier_weights": tuple(
+                tier.scalar_weight for tier in self.artifacts.objective_tiers
+            ),
             "assignment": assignment,
             "stats": stats,
             "validation_errors": checks or [],
             "n_vars": self.artifacts.n_vars,
             "n_clauses": self.artifacts.n_clauses,
             "n_hard_clauses": self.artifacts.n_clauses,
-            "n_soft": len(self.artifacts.objective_lits),
-            "n_soft_clauses": len(self.artifacts.objective_lits),
-            "n_objective_lits": len(self.artifacts.objective_lits),
+            "n_soft": sum(
+                len(tier.literals) for tier in self.artifacts.objective_tiers
+            ),
+            "n_soft_clauses": sum(
+                len(tier.literals) for tier in self.artifacts.objective_tiers
+            ),
+            "n_objective_lits": sum(
+                len(tier.literals) for tier in self.artifacts.objective_tiers
+            ),
             "full_schedule_candidates": (
                 self.artifacts.full_schedule_candidates
             ),
@@ -384,6 +445,14 @@ class B2BMaxSATSolver:
                 solver_cost=solver_cost,
             )
         )
+        checks.extend(
+            objective_metric_errors(
+                self.inst,
+                assignment,
+                objective_mode=self.artifacts.objective_mode,
+                encoded_vector=self.model.encoded_objective_vector(sat_model),
+            )
+        )
         return assignment, stats, checks
 
     def _solve_with_rc2(
@@ -404,8 +473,8 @@ class B2BMaxSATSolver:
         assignment, stats, checks = self._validate_model(sat_model, solver_cost)
         if verbose:
             print(
-                "[MaxSAT/RC2 development backend] optimum IdleRange(P*)="
-                f"{stats.objective_gap} (cost={solver_cost})"
+                "[MaxSAT/RC2 development backend] optimum vector="
+                f"{stats.objective_vector} (cost={solver_cost})"
             )
         return self._pack_result(
             "OPTIMAL" if not checks else "ERROR",
@@ -567,8 +636,8 @@ class B2BMaxSATSolver:
 
         if verbose:
             print(
-                "[MaxSAT/UWrMaxSAT] optimum IdleRange(P*)="
-                f"{stats.objective_gap} (cost={solver_cost})"
+                "[MaxSAT/UWrMaxSAT] optimum vector="
+                f"{stats.objective_vector} (cost={solver_cost})"
             )
 
             print(
@@ -612,6 +681,7 @@ def solve_b2b(
     precedence_encoding: str | None = None,
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
+    objective_mode: str = "ir",
     backend: MaxSATBackend | str | None = None,
     uwrmaxsat_bin: str | Path | None = None,
     uwrmaxsat_sha256: str | None = None,
@@ -625,6 +695,7 @@ def solve_b2b(
         encoding_variant=encoding_variant,
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
+        objective_mode=objective_mode,
         backend=backend,
         uwrmaxsat_bin=uwrmaxsat_bin,
         uwrmaxsat_sha256=uwrmaxsat_sha256,

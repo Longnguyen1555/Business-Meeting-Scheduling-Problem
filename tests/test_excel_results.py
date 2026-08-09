@@ -40,6 +40,15 @@ class ExcelResultsTests(unittest.TestCase):
             "i-imp12plus__backend-uwrmaxsat",
         )
         self.assertEqual(metadata["optimization_engine"], "UWrMaxSAT")
+        self.assertEqual(metadata["model_family_display_name"], "Compact")
+        self.assertEqual(
+            metadata["model_configuration_display_name"],
+            "Compact/Reduced",
+        )
+        self.assertEqual(
+            metadata["optimization_procedure_display_name"],
+            "one-shot weighted MaxSAT",
+        )
         self.assertEqual(
             [metadata[f"factor_{factor}"] for factor in "mfpgbosi"],
             [

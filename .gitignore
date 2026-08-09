@@ -7,3 +7,6 @@
 .venv-ubuntu/
 __pycache__/
 *.log
+journal_gcp.env
+/.DS_Store
+/noves/

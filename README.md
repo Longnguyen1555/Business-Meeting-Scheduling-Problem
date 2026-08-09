@@ -1,8 +1,8 @@
-# B2B SAT/MaxSAT, MIP, and CP conference models
+# B2B SAT/MaxSAT journal objective framework
 
-This repository implements the conference formulation of the
-Business-to-Business Meeting Scheduling Problem. The single optimization
-objective is
+This repository implements the conference formulation and the journal
+objective extension of the Business-to-Business Meeting Scheduling Problem.
+The backward-compatible default objective is
 
 \[
 \operatorname{IdleRange}(P^\star)
@@ -15,17 +15,31 @@ where `B(p)` is the number of idle slots strictly between participant `p`'s
 first and last meetings. Participants with zero or one meeting are excluded
 because their internal idle time is structurally zero.
 
-The conference model deliberately has no hard objective cap and no
-Lexicographic `IdleSum` objective.
+The shared Boolean model additionally supports:
+
+| CLI mode | Exact objective |
+|---|---|
+| `ir` | minimize `IdleRange(P*)` (conference default) |
+| `bg_d2` | minimize total break groups subject to hard `BreakGroupRange <= 2` |
+| `ir_is` | lexicographically minimize `(IdleRange(P*), total internal idle slots)` |
+| `bg_ir_is` | lexicographically minimize `(total break groups, IdleRange(P*), total internal idle slots)` |
+
+`MaxSAT_Solver.py` uses exact dominating weights. `Multiple_SAT.py` and
+`IncrementalSAT_Solver.py` optimize tiers sequentially; the latter retains one
+solver and its learned clauses across tiers. Commercial MIP/CP adapters still
+support only `ir`, and the CLI rejects other modes for those solvers.
 
 ## Main components
 
-- `src/B2B_Instance.py`: parser, exact domain reduction, compact break encoding,
-  hard constraints, objective literals, decoding, and independent validation.
-- `src/MaxSAT_Solver.py`: unit-weight partial MaxSAT optimization with required
-  UWrMaxSAT production execution and an explicit RC2 development backend.
-- `src/Multiple_SAT.py`: fresh-SAT binary-search optimization.
-- `src/IncrementalSAT_Solver.py`: incremental-SAT optimization with a totalizer.
+- `src/B2B_Instance.py`: parser, exact domain reduction, compact feasibility,
+  exact idle/break-group objective encodings, decoding, and validation.
+- `src/Journal_Metrics.py`: assignment-only independent evaluator for every
+  journal metric and objective vector; it does not call encoder helpers.
+- `src/Journal_Objectives.py`: development-only RC2 oracle for `IR-IS`.
+- `src/MaxSAT_Solver.py`: exact weighted partial MaxSAT with required UWrMaxSAT
+  production execution and an explicit RC2 development backend.
+- `src/Multiple_SAT.py`: fresh-solver, multi-phase SAT optimization.
+- `src/IncrementalSAT_Solver.py`: solver-preserving, multi-phase SAT optimization.
 - `src/MIP_SpanRange.py`: one solver-neutral linear model shared byte-for-byte
   at the variable/constraint IR level by both commercial MIP adapters.
 - `src/Gurobi_MIP_Solver.py`: Gurobi implementation of `MIP-SpanRange`.
@@ -137,6 +151,23 @@ python3 src/Main.py \
   --timeout 120 \
   --csv output/benchmark_results.csv
 ```
+
+Run a development correctness smoke for `IR-IS` with all Boolean methods:
+
+```bash
+python3 src/Main.py \
+  --instance data_table03_origin/tic-12.original.dzn \
+  --solver sat_all \
+  --objective-mode ir_is \
+  --domain-mode both \
+  --maxsat-backend rc2 \
+  --timeout 120 \
+  --csv output/journal_ir_is_smoke.csv
+```
+
+Use pinned UWrMaxSAT instead of RC2 for production. Every detailed row records
+the objective mode/vector, tier values/weights, break-group and idle metrics,
+phase time/calls, and independent-validation errors.
 
 On a precedence instance the same omitted P/G flags expand to all four cells,
 giving exactly `2 domains x 4 P/G cells x 3 engines = 24` runs. Explicit P/G
@@ -252,6 +283,9 @@ The benchmark source is the `b2b.zip` archive linked as **B2B benchmarks** on
 the UdG Logic and Artificial Intelligence page. The extracted `noves/`
 directory contains 140 official paths. SHA-256 grouping yields 126 distinct
 contents: 20 original, 26 forbidden, 40 fixed, and 40 precedence instances.
+These contents derive from exactly 20 base lineages. The manifest records
+`base_lineage_id`; statistical resampling and held-out splits must not treat
+constraint variants from one lineage as independent base problems.
 Fourteen forbidden contents each have two official names. The four repository
 data directories mirror those 140 paths without cross-family copies.
 
@@ -392,7 +426,8 @@ python3 src/Normalize_Official_Run.py \
 
 Every row stores eight factors separately: M (domain), F (domain-filter graph),
 P (precedence encoding), G (CNF precedence graph), B (`SpanThreshold`), O
-(`IdleRangePstar`), S (optimization engine), and I (implied package). Existing
+(`IdleRangePstar`, `BreakGroupsD2`, or a lexicographic mode), S (optimization
+engine), and I (implied package). Existing
 Filter-E* labels and `cfg2` machine IDs remain unchanged so completed results
 remain reusable. A new Filter-E label such as
 `R-FE-SS-DC-ST-IRP-UW-IC12P` and its `cfg4` machine ID explicitly record
@@ -478,6 +513,75 @@ The baseline uses the same dataset manifest, UWrMaxSAT pinning, end-to-end timer
 result schema, per-instance Excel output, and independent schedule/objective
 validation as the shared runner.
 
+## JAIR experiment campaigns
+
+The journal extension has a separate, independent historical `BG-d2` baseline
+in `src/ORG_BG_D2.py`, four shared objective modes (`ir`, `bg_d2`, `ir_is`, and
+exploratory `bg_ir_is`), a witness-first Generated-300 benchmark generator, a
+pre-solve feature extractor, and an append-only campaign runner. Development
+RC2 timings are correctness evidence only and must not be reported as production
+results.
+
+The frozen confirmatory matrices are:
+
+| Config | Scope | Runs |
+| --- | --- | ---: |
+| `production_smoke.json` | pinned production gate, 12 contents | 168 |
+| `official_core.json` | E1--E3, All-126, five repetitions | 8,820 |
+| `precedence_ablation.json` | E4, 140 precedence contents, three repetitions | 3,360 |
+| `generated_core.json` | E5, Generated-300, three repetitions | 4,500 |
+
+On the GCP VM, preserve the conference Python environment and solver binary.
+Production configs enforce the recorded conference profile: Intel Xeon Platinum
+8581C at 2.30 GHz, 4 physical/8 logical CPUs, 15,000--16,500 MiB RAM, no swap,
+one run thread, random seed 0, and a 7,200-second cutoff. The 300-second smoke
+and warm-up campaigns are excluded from reported timing. Copy
+`journal_gcp.env.example` to the git-ignored `journal_gcp.env`, set the absolute
+UWrMaxSAT path, verify the prefilled conference binary SHA-256, then run:
+
+```bash
+scripts/run_journal_gcp.sh setup
+
+# Generate once, audit the manifests/witnesses, then commit the frozen dataset.
+ALLOW_DIRTY=1 scripts/run_journal_gcp.sh generate
+
+# From the resulting clean commit:
+scripts/run_journal_gcp.sh plan
+scripts/run_journal_gcp.sh coverage
+scripts/run_journal_gcp.sh correctness
+scripts/run_journal_gcp.sh smoke
+scripts/run_journal_gcp.sh pilot
+```
+
+Do not start the confirmatory campaigns until the pilot validation report has
+confirmed RAM/compute feasibility and the matrix and analysis specification are
+frozen. The pilot does not tune the precommitted 7,200-second cutoff. Afterwards:
+
+```bash
+scripts/run_journal_gcp.sh official
+scripts/run_journal_gcp.sh precedence
+scripts/run_journal_gcp.sh generated-development
+
+# Open held-out data exactly once after all tuning decisions are frozen.
+HELDOUT_FROZEN=YES scripts/run_journal_gcp.sh generated-heldout
+```
+
+Each command runs only one benchmark worker. Thread-count environment variables
+are fixed to one, and optional `CPU_CORE` affinity is inherited by every child
+solver. Every cell is fsync'ed to `raw/results.jsonl`; normalized CSV and a
+strict `validation_report.json` are regenerated from the latest attempts.
+After VM preemption or SSH loss, repeat the same command: `--resume` is added
+automatically, completed keys are skipped, and the interrupted cell is rerun.
+The runner refuses a changed plan, commit, manifest, configuration, solver hash,
+or dirty production worktree. An explicit `RETRY_ERRORS=1` creates a new
+append-only attempt for existing `ERROR` rows; it never reruns a completed
+timeout under a silently changed cutoff.
+
+Keep `OUTPUT_ROOT` on a persistent disk. A campaign is paper-eligible only when
+its validation report has `valid: true`, no missing/error rows, and provenance
+records `git_dirty: false`. Planning or development output is not a substitute
+for these conditions.
+
 Build and inspect one CNF/WCNF directly:
 
 ```bash
@@ -486,7 +590,8 @@ python3 src/B2B_Instance.py \
   --precedence-encoding pairwise \
   --precedence-graph distance_closure \
   --encoding-variant imp12+ \
-  --domain-mode full
+  --domain-mode full \
+  --objective-mode ir_is
 ```
 
 ## Test

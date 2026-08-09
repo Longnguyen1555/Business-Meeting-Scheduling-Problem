@@ -24,12 +24,13 @@ except ImportError:  # Memory remains optional for benchmark portability.
     psutil = None
 
 from IncrementalSAT_Solver import B2BIncrementalSATSolver
-from B2B_Instance import read_instance
+from B2B_Instance import VALID_OBJECTIVE_MODES, read_instance
 from CPLEX_CP_Solver import B2BCPLEXCPSolver
 from CPLEX_MIP_Solver import B2BCPLEXMIPSolver
 from Dataset_Manifest import (
     DATASET_ARCHIVE_URL,
     DATASET_SOURCE_PAGE,
+    base_lineage_id,
     classify_instance_name,
     file_sha256,
 )
@@ -61,6 +62,7 @@ PRECEDENCE_ENCODINGS = ["pairwise", "sparse_suffix"]
 PRECEDENCE_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_FILTER_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_MODES = ["full", "reduced"]
+OBJECTIVE_MODES = sorted(VALID_OBJECTIVE_MODES)
 MAXSAT_BACKENDS = ["uwrmaxsat", "rc2"]
 SAT_BACKENDS = ["cadical", "glucose"]
 SAT_BACKEND_CODES = {"cadical": "CD", "glucose": "GL"}
@@ -87,6 +89,24 @@ VARIANT_FACTOR_NAMES = {
     "imp12": "IC12",
     "imp12+": "IC12+",
 }
+OBJECTIVE_CODES = {
+    "ir": "IRP",
+    "bg_d2": "BGD2",
+    "ir_is": "IRIS",
+    "bg_ir_is": "BGIRIS",
+}
+OBJECTIVE_NAMES = {
+    "ir": "IdleRangePstar",
+    "bg_d2": "BreakGroupsD2",
+    "ir_is": "IdleRangeThenIdleSum",
+    "bg_ir_is": "BreakGroupsThenIdleRangeThenIdleSum",
+}
+OBJECTIVE_KEYS = {
+    "ir": "idle_range_pstar",
+    "bg_d2": "break_groups_d2",
+    "ir_is": "idle_range_then_idle_sum",
+    "bg_ir_is": "break_groups_idle_range_idle_sum",
+}
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = PROJECT_ROOT / "instances_manifest.csv"
 
@@ -102,6 +122,7 @@ class InstanceSpec:
     has_precedence: bool
     source_alias_count: int
     source_alias_paths: str
+    base_lineage_id: str = ""
     repository_alias_count: int = 1
     repository_alias_paths: str = ""
     dataset_source_page: str = DATASET_SOURCE_PAGE
@@ -112,8 +133,8 @@ class InstanceSpec:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Benchmark the conference model: minimize IdleRange(P*) over "
-            "Full and/or Reduced meeting-slot domains."
+            "Benchmark the B2B Boolean models and journal objective family "
+            "over Full and/or Reduced meeting-slot domains."
         )
     )
     input_group = parser.add_mutually_exclusive_group()
@@ -210,6 +231,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Full=MxT variables; Reduced=exact preprocessing fixpoint",
     )
     parser.add_argument(
+        "--objective-mode",
+        choices=OBJECTIVE_MODES,
+        default="ir",
+        help=(
+            "ir preserves conference behavior; bg_d2, ir_is and bg_ir_is are "
+            "journal Boolean-objective modes"
+        ),
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=7200.0,
@@ -243,6 +273,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "defaults to <csv-parent>/excel"
         ),
     )
+    parser.add_argument(
+        "--no-excel",
+        action="store_true",
+        help="skip per-instance workbooks (recommended for cell-level campaigns)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     if args.timeout <= 0:
@@ -257,6 +292,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.keep_path_aliases and args.data_dir is None:
         parser.error("--keep-path-aliases requires --data-dir")
+    if args.objective_mode != "ir" and args.solver in {
+        *EXACT_SOLVERS,
+        "exact_all",
+        "all",
+    }:
+        parser.error(
+            "commercial exact baselines currently support only "
+            "--objective-mode ir"
+        )
     return args
 
 
@@ -282,6 +326,7 @@ class RunConfiguration:
     domain_filter_graph: str
     encoding_variant: str
     domain_mode: str
+    objective_mode: str = "ir"
 
 
 def precedence_configurations(args: argparse.Namespace) -> list[tuple[str, str]]:
@@ -338,10 +383,16 @@ def configuration_metadata(
     maxsat_backend: str,
     sat_backend: str,
     domain_filter_graph: str = "distance_closure",
+    objective_mode: str = "ir",
 ) -> dict[str, str]:
     """Return stable human and machine identifiers for one factor tuple."""
 
     if solver_name in EXACT_SOLVERS:
+        if objective_mode != "ir":
+            raise ValueError(
+                f"{solver_name} does not implement objective_mode="
+                f"{objective_mode!r}"
+            )
         exact_configurations = {
             "gurobi_mip": (
                 "GRB-MIP",
@@ -425,6 +476,8 @@ def configuration_metadata(
     else:
         raise ValueError(f"Unknown solver: {solver_name}")
 
+    if objective_mode not in VALID_OBJECTIVE_MODES:
+        raise ValueError(f"Unknown objective_mode={objective_mode!r}")
     domain_code = DOMAIN_CODES[domain_mode]
     encoding_code = PRECEDENCE_ENCODING_CODES[precedence_encoding]
     graph_code = PRECEDENCE_GRAPH_CODES[precedence_graph]
@@ -437,14 +490,26 @@ def configuration_metadata(
             encoding_code,
             graph_code,
             "ST",
-            "IRP",
+            OBJECTIVE_CODES[objective_mode],
             engine_code,
             implied_code,
         )
     )
     label = "-".join(label_parts)
+    optimization_procedure_display_name = {
+        "maxsat": "one-shot weighted MaxSAT",
+        "multiple": "restart-based multi-phase SAT",
+        "incremental": (
+            "incremental multi-phase SAT with persistent solver state"
+        ),
+    }[solver_name]
+    domain_display_name = "Full" if domain_mode == "full" else "Reduced"
     identifier_parts = [
-        "cfg2" if domain_filter_graph == "distance_closure" else "cfg4",
+        (
+            "cfg2" if domain_filter_graph == "distance_closure" else "cfg4"
+        )
+        if objective_mode == "ir"
+        else "cfg5",
         f"m-{domain_mode}",
     ]
     if domain_filter_graph == "direct":
@@ -454,7 +519,7 @@ def configuration_metadata(
             f"p-{precedence_encoding}",
             f"g-{precedence_graph}",
             "b-span_threshold",
-            "o-idle_range_pstar",
+            f"o-{OBJECTIVE_KEYS[objective_mode]}",
             f"s-{optimization_engine.lower()}",
             f"i-{encoding_variant.replace('+', 'plus')}",
             f"backend-{backend_code.lower()}",
@@ -465,10 +530,18 @@ def configuration_metadata(
         "configuration_label": label,
         "configuration_id": identifier,
         "configuration_key": identifier,
+        "model_family_display_name": "Compact",
+        "model_configuration_display_name": (
+            f"Compact/{domain_display_name}"
+        ),
+        "implementation_provenance": "project_implementation",
+        "optimization_procedure_display_name": (
+            optimization_procedure_display_name
+        ),
         "optimization_engine": optimization_engine,
         "idle_encoding": "span_threshold",
         "domain_filter_graph": domain_filter_graph,
-        "objective_code": "IRP",
+        "objective_code": OBJECTIVE_CODES[objective_mode],
         "implied_constraints_code": implied_code,
         "factor_m": "Full" if domain_mode == "full" else "Reduced",
         "factor_f": (
@@ -487,7 +560,7 @@ def configuration_metadata(
             else "DistanceClosure-E*"
         ),
         "factor_b": "SpanThreshold",
-        "factor_o": "IdleRangePstar",
+        "factor_o": OBJECTIVE_NAMES[objective_mode],
         "factor_s": optimization_engine,
         "factor_i": VARIANT_FACTOR_NAMES[encoding_variant],
     }
@@ -504,6 +577,7 @@ def _instance_spec_from_paths(paths: list[Path]) -> InstanceSpec:
         path=canonical,
         instance_name=canonical.stem,
         content_id=f"b2b-{digest[:16]}",
+        base_lineage_id=base_lineage_id(canonical.name),
         sha256=digest,
         family="|".join(family_values),
         variant="|".join(variant_values),
@@ -536,6 +610,10 @@ def _manifest_instances(path: Path, family: str) -> list[InstanceSpec]:
                     path=run_path,
                     instance_name=row["canonical_instance"],
                     content_id=row["content_id"],
+                    base_lineage_id=(
+                        row.get("base_lineage_id")
+                        or base_lineage_id(row["canonical_instance"])
+                    ),
                     sha256=row["sha256"],
                     family=row["family"],
                     variant=row["variant"],
@@ -659,6 +737,7 @@ def benchmark_configurations(
                 domain_filter_graph=domain_filter_graph,
                 encoding_variant=variant,
                 domain_mode=domain_mode,
+                objective_mode=args.objective_mode,
             )
             for domain_mode in domain_modes
             for domain_filter_graph in instance_domain_filter_configurations(
@@ -684,6 +763,7 @@ def benchmark_configurations(
                 domain_filter_graph="distance_closure",
                 encoding_variant="n/a",
                 domain_mode="reduced",
+                objective_mode="ir",
             )
         )
     return configurations
@@ -839,6 +919,16 @@ def _formula_metadata(
                 "domain_filter_graph",
                 "distance_closure",
             ),
+            "domain_filter_iterations": getattr(
+                artifacts,
+                "domain_filter_iterations",
+                None,
+            ),
+            "domain_filter_seconds": getattr(
+                artifacts,
+                "domain_filter_seconds",
+                None,
+            ),
             "full_schedule_candidates": (
                 artifacts.full_schedule_candidates
             ),
@@ -931,10 +1021,25 @@ def _formula_metadata(
             ),
         }
 
-    n_soft = len(artifacts.objective_lits) if solver_name == "maxsat" else 0
+    objective_literal_count = sum(
+        len(tier.literals) for tier in artifacts.objective_tiers
+    )
+    n_soft = objective_literal_count if solver_name == "maxsat" else 0
+    soft_weight_sum = (
+        sum(
+            len(tier.literals) * tier.scalar_weight
+            for tier in artifacts.objective_tiers
+        )
+        if solver_name == "maxsat"
+        else 0
+    )
     return {
         "message_type": "metadata",
         "objective": artifacts.objective_name,
+        "objective_mode": artifacts.objective_mode,
+        "objective_tier_weights": serialize_list(
+            tuple(tier.scalar_weight for tier in artifacts.objective_tiers)
+        ),
         "objective_participant_count": len(artifacts.objective_participants),
         "objective_participants": serialize_list(
             tuple(participant + 1 for participant in artifacts.objective_participants)
@@ -945,6 +1050,8 @@ def _formula_metadata(
         "precedence_configuration": artifacts.precedence_configuration,
         "domain_mode": artifacts.domain_mode,
         "domain_filter_graph": artifacts.domain_filter_graph,
+        "domain_filter_iterations": artifacts.domain_filter_iterations,
+        "domain_filter_seconds": round(artifacts.domain_filter_seconds, 6),
         "full_schedule_candidates": artifacts.full_schedule_candidates,
         "unary_eligible_schedule_candidates": (
             artifacts.unary_eligible_schedule_candidates
@@ -975,13 +1082,17 @@ def _formula_metadata(
         "n_binary_hard_clauses": artifacts.n_binary_hard_clauses,
         "n_ternary_hard_clauses": artifacts.n_ternary_hard_clauses,
         "n_long_hard_clauses": artifacts.n_long_hard_clauses,
-        "soft_clause_weight": 1 if n_soft else 0,
-        "soft_weight_sum": n_soft,
+        "soft_clause_weight": (
+            artifacts.objective_tiers[0].scalar_weight
+            if n_soft and len(artifacts.objective_tiers) == 1
+            else None
+        ),
+        "soft_weight_sum": soft_weight_sum,
         "formula_scope": FORMULA_SCOPE,
         "input_parsing_seconds": round(input_parsing_seconds, 6),
         "model_construction_seconds": round(model_construction_seconds, 6),
         "model_build_seconds": round(model_build_seconds, 6),
-        "n_objective_lits": len(artifacts.objective_lits),
+        "n_objective_lits": objective_literal_count,
         "precedence_direct_edges": artifacts.precedence_direct_edges,
         "precedence_closure_edges": artifacts.precedence_transitive_edges,
         "precedence_max_distance": artifacts.precedence_max_distance,
@@ -1059,11 +1170,23 @@ def _result_payload(
         "model_family": result.get("model_family"),
         "formulation_name": result.get("formulation_name"),
         "objective": result.get("objective", "internal_idle_slot_range_pstar"),
+        "objective_mode": result.get("objective_mode", "ir"),
+        "objective_vector": serialize_list(result.get("objective_vector")),
         "objective_value": result.get("objective_value"),
         "best_value": result.get("objective_value"),
         "best_bound": result.get("best_bound"),
         "optimality_gap": result.get("optimality_gap"),
         "proven_optimum": result.get("proven_optimum"),
+        "proven_objective_vector": serialize_list(
+            result.get("proven_objective_vector")
+        ),
+        "primary_objective_value": result.get("primary_objective_value"),
+        "secondary_objective_value": result.get("secondary_objective_value"),
+        "tertiary_objective_value": result.get("tertiary_objective_value"),
+        "lexicographic_scalar_cost": result.get("lexicographic_scalar_cost"),
+        "objective_tier_weights": serialize_list(
+            result.get("objective_tier_weights")
+        ),
         "objective_participant_count": result.get(
             "objective_participant_count"
         ),
@@ -1076,6 +1199,17 @@ def _result_payload(
         ),
         "total_internal_idle_slots": (
             None if stats is None else stats.total_internal_idle_slots
+        ),
+        "total_break_groups": (
+            None if stats is None else stats.total_break_groups
+        ),
+        "break_group_range": (
+            None if stats is None else stats.break_group_range
+        ),
+        "participant_break_groups": (
+            ""
+            if stats is None
+            else serialize_list(stats.participant_break_groups)
         ),
         "participant_internal_idle_slots": (
             ""
@@ -1106,6 +1240,12 @@ def _result_payload(
         "optimizer_added_clauses_cumulative": result.get(
             "optimizer_added_clauses_cumulative"
         ),
+        "objective_phase_seconds": serialize_list(
+            result.get("objective_phase_seconds")
+        ),
+        "objective_phase_calls": serialize_list(
+            result.get("objective_phase_calls")
+        ),
         "branch_and_bound_nodes": result.get("branch_and_bound_nodes"),
         "cp_branches": result.get("cp_branches"),
         "cp_fails": result.get("cp_fails"),
@@ -1125,6 +1265,7 @@ def _worker(
     domain_filter_graph: str,
     encoding_variant: str,
     domain_mode: str,
+    objective_mode: str,
     maxsat_backend: str,
     uwrmaxsat_bin: str | None,
     uwrmaxsat_sha256: str | None,
@@ -1155,6 +1296,7 @@ def _worker(
                 "encoding_variant": encoding_variant,
                 "domain_mode": domain_mode,
                 "domain_filter_graph": domain_filter_graph,
+                "objective_mode": objective_mode,
             }
         if solver_name == "maxsat":
             solver_kwargs.update(
@@ -1199,7 +1341,16 @@ def _worker(
                 incumbent_callback=lambda value: output.put(
                     {
                         "message_type": "incumbent",
-                        "best_value": int(value),
+                        "best_value": (
+                            int(value[0])
+                            if isinstance(value, tuple)
+                            else int(value)
+                        ),
+                        "objective_vector": (
+                            tuple(int(item) for item in value)
+                            if isinstance(value, tuple)
+                            else (int(value),)
+                        ),
                     }
                 ),
             )
@@ -1238,11 +1389,15 @@ def _worker(
                 "domain_filter_graph": domain_filter_graph,
                 "encoding_variant": encoding_variant,
                 "domain_mode": domain_mode,
+                "objective_mode": objective_mode,
                 "runtime_seconds": round(time.perf_counter() - started, 6),
                 "runtime_scope": RUNTIME_SCOPE,
                 "runtime_censored": False,
                 "formula_scope": FORMULA_SCOPE,
-                "objective": "internal_idle_slot_range_pstar",
+                "objective": OBJECTIVE_KEYS.get(
+                    objective_mode,
+                    "unknown_objective",
+                ),
                 "best_value": None,
                 "maxsat_backend_preference": (
                     maxsat_backend if solver_name == "maxsat" else ""
@@ -1338,6 +1493,12 @@ def _drain_queue(
             current = metadata.get("incumbent_best_value")
             if candidate is not None and (current is None or candidate < current):
                 metadata["incumbent_best_value"] = candidate
+            vector = message.get("objective_vector")
+            current_vector = metadata.get("incumbent_objective_vector")
+            if vector is not None and (
+                current_vector is None or tuple(vector) < tuple(current_vector)
+            ):
+                metadata["incumbent_objective_vector"] = tuple(vector)
 
 
 def _terminal_payload(
@@ -1352,6 +1513,7 @@ def _terminal_payload(
     maxsat_backend: str,
     sat_backend: str,
     runtime_seconds: float,
+    objective_mode: str,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -1368,6 +1530,7 @@ def _terminal_payload(
         "domain_filter_graph": domain_filter_graph,
         "encoding_variant": encoding_variant,
         "domain_mode": domain_mode,
+        "objective_mode": objective_mode,
         "runtime_seconds": round(runtime_seconds, 6),
         "runtime_scope": (
             "configured wall-clock cutoff measured by the controller; "
@@ -1375,7 +1538,7 @@ def _terminal_payload(
         ),
         "runtime_censored": status == "TIMEOUT",
         "formula_scope": FORMULA_SCOPE,
-        "objective": "internal_idle_slot_range_pstar",
+        "objective": OBJECTIVE_KEYS.get(objective_mode, "unknown_objective"),
         "best_value": None,
         "maxsat_backend_preference": (
             maxsat_backend if solver_name == "maxsat" else ""
@@ -1407,6 +1570,7 @@ def run_with_timeout(
     verbose: bool,
     threads: int = 1,
     random_seed: int = 0,
+    objective_mode: str = "ir",
 ) -> dict[str, Any]:
     context = mp.get_context("spawn")
     output: mp.Queue[Any] = context.Queue()
@@ -1420,6 +1584,7 @@ def run_with_timeout(
             domain_filter_graph,
             encoding_variant,
             domain_mode,
+            objective_mode,
             maxsat_backend,
             uwrmaxsat_bin,
             uwrmaxsat_sha256,
@@ -1467,6 +1632,7 @@ def run_with_timeout(
             maxsat_backend=maxsat_backend,
             sat_backend=sat_backend,
             runtime_seconds=time.perf_counter() - started,
+            objective_mode=objective_mode,
         )
     else:
         process.join()
@@ -1487,6 +1653,7 @@ def run_with_timeout(
                 maxsat_backend=maxsat_backend,
                 sat_backend=sat_backend,
                 runtime_seconds=time.perf_counter() - started,
+                objective_mode=objective_mode,
             )
             result["error_type"] = "NoWorkerPayload"
             result["error_message"] = "Worker returned no result"
@@ -1497,6 +1664,12 @@ def run_with_timeout(
         "incumbent_best_value"
     ) is not None:
         result["best_value"] = metadata["incumbent_best_value"]
+    if result.get("objective_vector") is None and metadata.get(
+        "incumbent_objective_vector"
+    ) is not None:
+        result["objective_vector"] = tuple(
+            metadata["incumbent_objective_vector"]
+        )
     if result.get("runtime_censored") and result.get("model_build_seconds") is not None:
         result.setdefault(
             "solve_and_validate_seconds",
@@ -1519,6 +1692,7 @@ def run_with_timeout(
             domain_mode=domain_mode,
             maxsat_backend=maxsat_backend,
             sat_backend=sat_backend,
+            objective_mode=objective_mode,
         )
     )
     result.setdefault("formula_scope", FORMULA_SCOPE)
@@ -1615,12 +1789,16 @@ def format_table_cell(result: dict[str, Any]) -> str:
     if status == "ERROR":
         return "ERR"
     runtime = result.get("runtime_seconds")
-    objective = result.get("idle_range_pstar")
+    objective = result.get("objective_vector")
+    if objective is None:
+        objective = result.get("objective_value")
+    if objective is None:
+        objective = result.get("idle_range_pstar")
     return f"{float(runtime):.1f} {objective}"
 
 
 def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
-    grouped: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[str, str, str, str, str, str, str], dict[str, Any]] = {}
     for result in results:
         key = (
             result["instance"],
@@ -1629,6 +1807,7 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             result.get("domain_filter_graph", "distance_closure"),
             result["solver"],
             result["domain_mode"],
+            result.get("objective_mode", "ir"),
         )
         row = grouped.setdefault(
             key,
@@ -1642,7 +1821,8 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
                     "distance_closure",
                 ),
                 "solver": result["solver"],
-                "objective": "IdleRange(P*)",
+                "objective": result.get("objective", "IdleRange(P*)"),
+                "objective_mode": result.get("objective_mode", "ir"),
                 "domain_mode": result["domain_mode"],
             },
         )
@@ -1660,6 +1840,7 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             row["precedence_encoding"],
             row["precedence_graph"],
             row["solver"],
+            row["objective_mode"],
         )
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1671,6 +1852,7 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
         "domain_filter_graph",
         "solver",
         "objective",
+        "objective_mode",
         "domain_mode",
         *AGGREGATE_VARIANTS,
     ]
@@ -1703,6 +1885,20 @@ def _git_metadata() -> tuple[str, bool | None]:
         return "", None
 
 
+def _cpu_model() -> str:
+    value = platform.processor().strip()
+    if value:
+        return value
+    try:
+        with Path("/proc/cpuinfo").open(encoding="utf-8") as stream:
+            for line in stream:
+                if line.lower().startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
 def experiment_metadata(
     args: argparse.Namespace,
     argv: list[str] | None,
@@ -1733,14 +1929,14 @@ def experiment_metadata(
         "pysat_version": pysat_version,
         "hostname": platform.node(),
         "platform": platform.platform(),
-        "cpu_model": platform.processor(),
+        "cpu_model": _cpu_model(),
         "physical_cpu_cores": physical_cores,
         "logical_cpu_cores": os.cpu_count(),
         "system_memory_mb": total_memory_mb,
         "timeout_seconds": args.timeout,
         "memory_limit_mb": None,
-        "threads": None,
-        "random_seed": None,
+        "threads": getattr(args, "threads", 1),
+        "random_seed": getattr(args, "random_seed", 0),
     }
 
 
@@ -1748,6 +1944,10 @@ def instance_result_metadata(instance: InstanceSpec) -> dict[str, Any]:
     return {
         "instance": instance.instance_name,
         "instance_content_id": instance.content_id,
+        "base_lineage_id": (
+            instance.base_lineage_id
+            or base_lineage_id(instance.instance_name)
+        ),
         "instance_sha256": instance.sha256,
         "instance_family": instance.family,
         "instance_variant": instance.variant,
@@ -1800,7 +2000,10 @@ def main(argv: list[str] | None = None) -> int:
     current_run = 0
     experiment = experiment_metadata(args, argv)
 
-    print(f"B2B conference benchmark: {total_runs} run(s), objective=IdleRange(P*)")
+    print(
+        f"B2B benchmark: {total_runs} run(s), "
+        f"objective_mode={args.objective_mode}"
+    )
     print(
         f"Selected input paths: {len(instances)} "
         f"(family={args.family}, "
@@ -1840,7 +2043,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"F={configuration.domain_filter_graph} | "
                 f"P={configuration.precedence_encoding} | "
                 f"G={configuration.precedence_graph} | "
-                f"{configuration.encoding_variant}",
+                f"{configuration.encoding_variant} | "
+                f"objective={configuration.objective_mode}",
                 flush=True,
             )
             result = run_with_timeout(
@@ -1859,6 +2063,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.verbose,
                 args.threads,
                 args.random_seed,
+                configuration.objective_mode,
             )
             result = {
                 **instance_result_metadata(instance),
@@ -1867,19 +2072,22 @@ def main(argv: list[str] | None = None) -> int:
             }
             results.append(result)
             instance_results.append(result)
-            workbook_path = write_instance_excel(
-                excel_output_dir,
-                instance.instance_name,
-                instance_results,
-            )
+            workbook_path = None
+            if not args.no_excel:
+                workbook_path = write_instance_excel(
+                    excel_output_dir,
+                    instance.instance_name,
+                    instance_results,
+                )
             print(
                 f"    {result['sat_result']} | "
-                f"IdleRange(P*)={result.get('idle_range_pstar')} | "
+                f"objective={result.get('objective_vector')} | "
                 f"time={result.get('runtime_seconds')}s | "
                 f"config={result.get('configuration_label')}",
                 flush=True,
             )
-        print(f"    Excel: {workbook_path}", flush=True)
+        if not args.no_excel:
+            print(f"    Excel: {workbook_path}", flush=True)
 
     detailed_path = Path(args.long_csv) if args.long_csv else _detailed_csv_path(args.csv)
     aggregate_path = Path(args.csv)
@@ -1887,7 +2095,8 @@ def main(argv: list[str] | None = None) -> int:
     write_aggregate_csv(aggregate_path, results)
     print(f"Detailed CSV: {detailed_path}")
     print(f"Aggregate CSV: {aggregate_path}")
-    print(f"Per-instance Excel directory: {excel_output_dir}")
+    if not args.no_excel:
+        print(f"Per-instance Excel directory: {excel_output_dir}")
 
     errors = sum(result["sat_result"] == "ERROR" for result in results)
     timeouts = sum(result["sat_result"] == "TIMEOUT" for result in results)

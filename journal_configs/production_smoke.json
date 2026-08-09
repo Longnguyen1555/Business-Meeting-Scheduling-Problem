@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-production-smoke-v1",
+  "description": "Pinned-UWrMaxSAT/CaDiCaL 12-content G2-G3 gate using the exact production bundles.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 60,
+  "run_order_seed": 20260811,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "blocks_from": "official_core.json",
+  "block_repetitions": {
+    "e1_historical_representation": 1,
+    "e2_objective_representation": 1,
+    "e3_optimizer_additional": 1
+  },
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all",
+      "instance_names": [
+        "forum-13.original",
+        "forum-13crafb.original",
+        "forum-13crafc.original",
+        "forum-14.forb0003",
+        "forumt-14.forb0003",
+        "forumt-14crafc.forb0003",
+        "forumt-14crafd.fixed020-Forb",
+        "forumt-14crafe.fixed020-Forb",
+        "tic-12.fixed020-Forb",
+        "tic-12crafc.prec15",
+        "tic-13.prec15",
+        "tic-13crafb.prec15"
+      ]
+    }
+  ]
+}

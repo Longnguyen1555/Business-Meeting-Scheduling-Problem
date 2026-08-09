@@ -10,7 +10,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from Dataset_Manifest import file_sha256
+from Dataset_Manifest import base_lineage_id, file_sha256
 from Main import (
     collect_instances,
     instance_precedence_configurations,
@@ -47,6 +47,37 @@ class DatasetManifestTests(unittest.TestCase):
             sum(int(row["source_alias_count"]) == 2 for row in rows),
             14,
         )
+        lineages = {row["base_lineage_id"] for row in rows}
+        self.assertEqual(len(lineages), 20)
+        self.assertTrue(
+            all(lineage.startswith("b2b-lineage-") for lineage in lineages)
+        )
+
+    def test_lineage_is_shared_across_official_and_stress_variants(self) -> None:
+        manifests = [
+            PROJECT_ROOT / "instances_manifest.csv",
+            PROJECT_ROOT / "data_precedence_stress" / "instances_manifest.csv",
+            PROJECT_ROOT
+            / "data_precedence_stress_high"
+            / "instances_manifest.csv",
+        ]
+        lineage_sets = []
+        for manifest in manifests:
+            with manifest.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            lineage_sets.append({row["base_lineage_id"] for row in rows})
+            for row in rows:
+                self.assertEqual(
+                    row["base_lineage_id"],
+                    base_lineage_id(row["canonical_instance"]),
+                )
+
+        self.assertEqual(
+            [len(lineages) for lineages in lineage_sets],
+            [20, 20, 20],
+        )
+        self.assertEqual(lineage_sets[0], lineage_sets[1])
+        self.assertEqual(lineage_sets[0], lineage_sets[2])
 
     def test_manifest_paths_match_the_recorded_content_hash(self) -> None:
         with self.manifest.open(newline="", encoding="utf-8") as stream:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+import time
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -15,6 +16,7 @@ PrecedenceGraph = Literal["direct", "distance_closure"]
 DomainFilterGraph = Literal["direct", "distance_closure"]
 EncodingVariant = Literal["basic", "imp1", "imp2", "imp12", "imp12+"]
 DomainMode = Literal["full", "reduced"]
+ObjectiveMode = Literal["ir", "bg_d2", "ir_is", "bg_ir_is"]
 
 VALID_PRECEDENCE_MODES = {"traditional", "staircase"}
 VALID_PRECEDENCE_ENCODINGS = {"pairwise", "sparse_suffix"}
@@ -22,6 +24,7 @@ VALID_PRECEDENCE_GRAPHS = {"direct", "distance_closure"}
 VALID_DOMAIN_FILTER_GRAPHS = {"direct", "distance_closure"}
 VALID_ENCODING_VARIANTS = {"basic", "imp1", "imp2", "imp12", "imp12+"}
 VALID_DOMAIN_MODES = {"full", "reduced"}
+VALID_OBJECTIVE_MODES = {"ir", "bg_d2", "ir_is", "bg_ir_is"}
 
 LEGACY_PRECEDENCE_CONFIGURATIONS: dict[str, tuple[str, str]] = {
     "traditional": ("pairwise", "direct"),
@@ -78,6 +81,29 @@ class PrecedenceGraphInfo:
 
 
 @dataclass(frozen=True)
+class DomainReductionStats:
+    """Execution statistics for one exact domain-reduction fixpoint."""
+
+    iterations: int
+    feasible: bool
+
+
+@dataclass(frozen=True)
+class ObjectiveTier:
+    """One exact cardinality tier in a lexicographic objective.
+
+    The true-literal count is the tier value. ``scalar_weight`` is one for a
+    single-tier objective and a proven dominating weight for one-shot MaxSAT.
+    SAT optimizers ignore this weight and optimize the tiers sequentially.
+    """
+
+    name: str
+    literals: tuple[int, ...]
+    upper_bound: int
+    scalar_weight: int
+
+
+@dataclass(frozen=True)
 class B2BSolutionStats:
     """Schedule statistics for the internal-idle-slot range over P*.
 
@@ -94,6 +120,11 @@ class B2BSolutionStats:
     objective_participants: tuple[int, ...]
     meetings_per_slot: list[list[int]]
     busy_participants_per_slot: list[int]
+    participant_break_groups: list[int] = field(default_factory=list)
+    total_break_groups: int = 0
+    break_group_range: int = 0
+    objective_mode: str = "ir"
+    objective_vector: tuple[int, ...] = ()
 
     @property
     def total_internal_idle_slots(self) -> int:
@@ -129,8 +160,14 @@ class B2BModelArtifacts:
     cnf: CNF
     objective_lits: list[int]
     objective_name: str
+    objective_mode: str
+    objective_tiers: tuple[ObjectiveTier, ...]
     objective_participants: tuple[int, ...]
     objective_gap_lits: list[int]
+    idle_threshold_lits_by_participant: list[list[int]]
+    break_group_end_lits_by_participant: list[list[int]]
+    break_group_threshold_lits_by_participant: list[list[int]]
+    break_group_range_lits: list[int]
     hole_lits_by_participant: list[list[int]]
     sorted_hole_lits_by_participant: list[list[int]]
     n_vars: int
@@ -150,6 +187,8 @@ class B2BModelArtifacts:
     precedence_configuration: str
     domain_mode: str
     domain_filter_graph: str
+    domain_filter_iterations: int
+    domain_filter_seconds: float
     enabled_constraints: list[str]
     full_schedule_candidates: int
     unary_eligible_schedule_candidates: int
@@ -573,16 +612,18 @@ def _propagate_saturated_table_slots(
     return changed, True
 
 
-def reduce_domains_with_precedence(
+def reduce_domains_with_precedence_profiled(
     inst: B2BInstance,
     graph: PrecedenceGraphInfo,
     domain_filter_graph: DomainFilterGraph = "distance_closure",
-) -> tuple[list[list[int]], int, int]:
-    """Run exact preprocessing to a fixpoint.
+) -> tuple[list[list[int]], int, int, DomainReductionStats]:
+    """Run exact preprocessing and return its convergence statistics.
 
     The fixpoint combines unary restrictions, precedence propagation over either
     direct E or distance-labelled E*, participant all-different matching GAC, and
-    saturated table-slot propagation.
+    saturated table-slot propagation. ``iterations`` counts complete executions
+    of this propagation sequence, including the final pass that confirms the
+    fixpoint.
     """
 
     if domain_filter_graph not in VALID_DOMAIN_FILTER_GRAPHS:
@@ -594,7 +635,12 @@ def reduce_domains_with_precedence(
 
     if graph.cycle_nodes:
         domains[graph.cycle_nodes[0]].clear()
-        return [sorted(domain) for domain in domains], initial_count, sum(map(len, domains))
+        return (
+            [sorted(domain) for domain in domains],
+            initial_count,
+            sum(map(len, domains)),
+            DomainReductionStats(iterations=0, feasible=False),
+        )
 
     if domain_filter_graph == "direct":
         effective_distances = [
@@ -605,7 +651,10 @@ def reduce_domains_with_precedence(
         effective_distances = graph.longest_distance
 
     changed = True
+    iterations = 0
+    feasible = True
     while changed:
+        iterations += 1
         changed = _propagate_distance_precedences(
             domains,
             effective_distances,
@@ -620,7 +669,33 @@ def reduce_domains_with_precedence(
             break
 
     reduced_count = sum(len(domain) for domain in domains)
-    return [sorted(domain) for domain in domains], initial_count, reduced_count
+    return (
+        [sorted(domain) for domain in domains],
+        initial_count,
+        reduced_count,
+        DomainReductionStats(iterations=iterations, feasible=feasible),
+    )
+
+
+def reduce_domains_with_precedence(
+    inst: B2BInstance,
+    graph: PrecedenceGraphInfo,
+    domain_filter_graph: DomainFilterGraph = "distance_closure",
+) -> tuple[list[list[int]], int, int]:
+    """Run exact preprocessing to a fixpoint.
+
+    This backward-compatible wrapper omits the execution statistics returned by
+    :func:`reduce_domains_with_precedence_profiled`.
+    """
+
+    domains, initial_count, reduced_count, _ = (
+        reduce_domains_with_precedence_profiled(
+            inst,
+            graph,
+            domain_filter_graph=domain_filter_graph,
+        )
+    )
+    return domains, initial_count, reduced_count
 
 
 def objective_participants(inst: B2BInstance) -> tuple[int, ...]:
@@ -638,8 +713,12 @@ def compute_solution_stats(
     assignment: list[int],
     *,
     participants: tuple[int, ...] | None = None,
+    objective_mode: ObjectiveMode | str = "ir",
 ) -> B2BSolutionStats:
-    """Compute IdleRange(P*) statistics independently of any solver model."""
+    """Compute journal objective metrics directly from a decoded schedule."""
+
+    if objective_mode not in VALID_OBJECTIVE_MODES:
+        raise ValueError(f"Unknown objective_mode={objective_mode!r}")
 
     selected_participants = (
         objective_participants(inst) if participants is None else participants
@@ -652,6 +731,7 @@ def compute_solution_stats(
             meetings_per_slot[slot].append(meeting)
 
     participant_idle = [0] * inst.n_business
+    participant_break_groups = [0] * inst.n_business
     for participant, meetings in enumerate(inst.meetings_by_business):
         slots = sorted(
             assignment[meeting]
@@ -661,6 +741,10 @@ def compute_solution_stats(
         if len(slots) >= 2:
             participant_idle[participant] = (
                 slots[-1] - slots[0] + 1 - len(slots)
+            )
+            participant_break_groups[participant] = sum(
+                right > left + 1
+                for left, right in zip(slots, slots[1:])
             )
 
     objective_values = [
@@ -677,8 +761,21 @@ def compute_solution_stats(
         if len(participant_idle) >= 2
         else 0
     )
+    break_group_range = (
+        max(participant_break_groups) - min(participant_break_groups)
+        if len(participant_break_groups) >= 2
+        else 0
+    )
+    total_idle = sum(participant_idle)
+    total_break_groups = sum(participant_break_groups)
+    objective_vectors = {
+        "ir": (objective_gap,),
+        "bg_d2": (total_break_groups,),
+        "ir_is": (objective_gap, total_idle),
+        "bg_ir_is": (total_break_groups, objective_gap, total_idle),
+    }
     return B2BSolutionStats(
-        total_breaks=sum(participant_idle),
+        total_breaks=total_idle,
         participant_breaks=participant_idle,
         objective_gap=objective_gap,
         all_participant_idle_range=all_participant_gap,
@@ -687,6 +784,11 @@ def compute_solution_stats(
         busy_participants_per_slot=[
             2 * len(meetings) for meetings in meetings_per_slot
         ],
+        participant_break_groups=participant_break_groups,
+        total_break_groups=total_break_groups,
+        break_group_range=break_group_range,
+        objective_mode=str(objective_mode),
+        objective_vector=objective_vectors[str(objective_mode)],
     )
 
 
@@ -808,9 +910,9 @@ def resolve_precedence_configuration(
 
 
 class B2BSATModel:
-    """Optimized exact encoder for the max/min internal-idle-slot gap over P*.
+    """Optimized exact encoder for the journal objective family.
 
-    The only optimization objective is
+    The backward-compatible default optimization objective is
 
         minimize max_{p in P*} B(p) - min_{p in P*} B(p),
 
@@ -848,6 +950,7 @@ class B2BSATModel:
         precedence_encoding: PrecedenceEncoding | None = None,
         precedence_graph: PrecedenceGraph | None = None,
         domain_filter_graph: DomainFilterGraph = "distance_closure",
+        objective_mode: ObjectiveMode = "ir",
     ) -> None:
         if encoding_variant not in VALID_ENCODING_VARIANTS:
             raise ValueError(f"Unknown encoding_variant={encoding_variant!r}")
@@ -857,6 +960,8 @@ class B2BSATModel:
             raise ValueError(
                 f"Unknown domain_filter_graph={domain_filter_graph!r}"
             )
+        if objective_mode not in VALID_OBJECTIVE_MODES:
+            raise ValueError(f"Unknown objective_mode={objective_mode!r}")
 
         (
             resolved_precedence_encoding,
@@ -879,6 +984,7 @@ class B2BSATModel:
         self.encoding_variant = encoding_variant
         self.domain_mode = domain_mode
         self.domain_filter_graph = domain_filter_graph
+        self.objective_mode = objective_mode
         self.objective_participants = tuple(
             participant
             for participant, meeting_count in enumerate(inst.n_meetings_business)
@@ -898,15 +1004,19 @@ class B2BSATModel:
             sorted(original_eligible_slots(inst, meeting))
             for meeting in range(inst.n_meetings)
         ]
+        domain_filter_started = time.perf_counter()
         (
             self._reduced_slots,
             reduction_initial_count,
             self.reduced_schedule_candidates,
-        ) = reduce_domains_with_precedence(
+            domain_filter_stats,
+        ) = reduce_domains_with_precedence_profiled(
             inst,
             self.graph,
             domain_filter_graph=self.domain_filter_graph,
         )
+        self.domain_filter_seconds = time.perf_counter() - domain_filter_started
+        self.domain_filter_iterations = domain_filter_stats.iterations
         self.full_schedule_candidates = inst.n_meetings * inst.n_total_slots
         self.unary_eligible_schedule_candidates = sum(
             len(slots) for slots in self._unary_eligible_slots
@@ -934,6 +1044,8 @@ class B2BSATModel:
         self._precedence_pairwise_clauses = 0
         self._precedence_sparse_link_clauses = 0
         self._precedence_unique_suffix_cuts = 0
+        self._used_slots_channeled = False
+        self._prefix_suffix_built: set[int] = set()
 
         self._schedule_vars: dict[tuple[int, int], int] = {}
         for meeting, slots in enumerate(self._eligible_slots):
@@ -996,6 +1108,21 @@ class B2BSATModel:
 
     def break_threshold(self, p: int, k: int) -> int:
         return self.vpool.id(("breakSlotsAtLeast", p, k))
+
+    def break_group_end(self, p: int, t: int) -> int:
+        return self.vpool.id(("breakGroupEnd", p, t))
+
+    def break_group_threshold(self, p: int, k: int) -> int:
+        return self.vpool.id(("breakGroupsAtLeast", p, k))
+
+    def range_max(self, family: str, k: int) -> int:
+        return self.vpool.id((family, "rangeMax", k))
+
+    def range_min(self, family: str, k: int) -> int:
+        return self.vpool.id((family, "rangeMin", k))
+
+    def range_difference(self, family: str, k: int) -> int:
+        return self.vpool.id((family, "rangeDifference", k))
 
     # Backward-compatible accessors.
     def meeting_before(self, p: int, t: int) -> int:
@@ -1130,8 +1257,13 @@ class B2BSATModel:
             if self.domain_filter_graph == "direct"
             else "distance-labelled E*"
         )
+        objective_policy = (
+            "objective-only optimization: no hard upper bound on objective gap"
+            if self.objective_mode == "ir"
+            else f"journal objective family: {self.objective_mode}"
+        )
         self.enabled_constraints = [
-            "objective-only optimization: no hard upper bound on objective gap",
+            objective_policy,
             f"F-selected {filter_label} domain propagation and cycle detection",
             "precedence configuration: "
             f"F={self.domain_filter_graph}, "
@@ -1159,8 +1291,15 @@ class B2BSATModel:
             self._add_capacity_over_meetings(cnf)
         self._add_precedences(cnf)
 
-        threshold_lits = self._add_span_break_thresholds(cnf)
-        gap_lits = self._add_gap_objective(cnf, threshold_lits)
+        (
+            idle_threshold_lits,
+            idle_range_lits,
+            break_group_end_lits,
+            break_group_threshold_lits,
+            break_group_range_lits,
+            objective_tiers,
+            objective_name,
+        ) = self._build_objective_family(cnf)
 
         n_vars = max(self.vpool.top, cnf.nv)
         n_primary_variables = len(self._schedule_vars)
@@ -1168,12 +1307,20 @@ class B2BSATModel:
 
         self._artifacts = B2BModelArtifacts(
             cnf=cnf,
-            objective_lits=gap_lits,
-            objective_name="internal_idle_slot_range_pstar",
+            objective_lits=list(objective_tiers[0].literals),
+            objective_name=objective_name,
+            objective_mode=self.objective_mode,
+            objective_tiers=objective_tiers,
             objective_participants=self.objective_participants,
-            objective_gap_lits=gap_lits,
+            objective_gap_lits=idle_range_lits,
+            idle_threshold_lits_by_participant=idle_threshold_lits,
+            break_group_end_lits_by_participant=break_group_end_lits,
+            break_group_threshold_lits_by_participant=(
+                break_group_threshold_lits
+            ),
+            break_group_range_lits=break_group_range_lits,
             hole_lits_by_participant=[[] for _ in range(self.inst.n_business)],
-            sorted_hole_lits_by_participant=threshold_lits,
+            sorted_hole_lits_by_participant=idle_threshold_lits,
             n_vars=n_vars,
             n_clauses=len(cnf.clauses),
             n_primary_variables=n_primary_variables,
@@ -1191,6 +1338,8 @@ class B2BSATModel:
             precedence_configuration=self.precedence_configuration,
             domain_mode=self.domain_mode,
             domain_filter_graph=self.domain_filter_graph,
+            domain_filter_iterations=self.domain_filter_iterations,
+            domain_filter_seconds=self.domain_filter_seconds,
             enabled_constraints=list(self.enabled_constraints),
             full_schedule_candidates=self.full_schedule_candidates,
             unary_eligible_schedule_candidates=(
@@ -1224,19 +1373,27 @@ class B2BSATModel:
             precedence_unique_suffix_cuts=(
                 self._precedence_unique_suffix_cuts
             ),
-            objective_encoding="linear first/last span with exact unary thresholds",
+            objective_encoding={
+                "ir": "linear first/last span with exact unary thresholds",
+                "ir_is": "exact_idle_span_threshold_range_then_idle_sum",
+                "bg_d2": "exact_break_group_threshold_range_cap_d2",
+                "bg_ir_is": (
+                    "exact_break_group_sum_then_idle_range_then_idle_sum"
+                ),
+            }[self.objective_mode],
         )
         return self._artifacts
 
     def build_wcnf(self) -> WCNF:
-        """Build partial MaxSAT minimizing only the idle-slot range over P*."""
+        """Build exact weighted MaxSAT for the selected objective family."""
 
         artifacts = self.build_base_cnf()
         wcnf = WCNF()
         for clause in artifacts.cnf.clauses:
             wcnf.append(clause)
-        for lit in artifacts.objective_lits:
-            wcnf.append([-lit], weight=1)
+        for tier in artifacts.objective_tiers:
+            for lit in tier.literals:
+                wcnf.append([-lit], weight=tier.scalar_weight)
         return wcnf
 
     # Feasibility -------------------------------------------------------
@@ -1447,6 +1604,9 @@ class B2BSATModel:
         cnf.append([left, -right])
 
     def _channel_used_slots(self, cnf: CNF) -> None:
+        if self._used_slots_channeled:
+            return
+        self._used_slots_channeled = True
         self.enabled_constraints.append("exact schedule <-> usedSlot channeling")
         for participant, meetings in enumerate(self.inst.meetings_by_business):
             for slot in range(self.inst.n_total_slots):
@@ -1469,6 +1629,9 @@ class B2BSATModel:
             self._add_implied_constraint_2(cnf)
 
     def _build_prefix_suffix(self, cnf: CNF, participant: int) -> None:
+        if participant in self._prefix_suffix_built:
+            return
+        self._prefix_suffix_built.add(participant)
         total_slots = self.inst.n_total_slots
         if total_slots == 0:
             return
@@ -1574,6 +1737,103 @@ class B2BSATModel:
 
         return thresholds_by_participant
 
+    def _add_exact_cardinality_thresholds(
+        self,
+        cnf: CNF,
+        literals: list[int],
+        *,
+        participant: int,
+        family: str,
+        upper_bound: int,
+    ) -> list[int]:
+        """Encode exact unary literals ``[sum(literals) >= k]``."""
+
+        thresholds: list[int] = []
+        for amount in range(1, min(upper_bound, len(literals)) + 1):
+            if family != "break_groups":
+                raise ValueError(f"Unsupported threshold family={family!r}")
+            threshold = self.break_group_threshold(participant, amount)
+            thresholds.append(threshold)
+
+            at_least = CardEnc.atleast(
+                lits=literals,
+                bound=amount,
+                vpool=self.vpool,
+                encoding=EncType.seqcounter,
+            )
+            for clause in at_least.clauses:
+                cnf.append([-threshold, *clause])
+
+            at_most = CardEnc.atmost(
+                lits=literals,
+                bound=amount - 1,
+                vpool=self.vpool,
+                encoding=EncType.seqcounter,
+            )
+            for clause in at_most.clauses:
+                cnf.append([threshold, *clause])
+
+        for index in range(1, len(thresholds)):
+            cnf.append([-thresholds[index], thresholds[index - 1]])
+        return thresholds
+
+    def _add_break_group_thresholds(
+        self,
+        cnf: CNF,
+    ) -> tuple[list[list[int]], list[list[int]]]:
+        """Encode exact maximal internal idle-block counts for every participant."""
+
+        self.enabled_constraints.append(
+            "exact break-group ends and unary break-group thresholds"
+        )
+        self._channel_used_slots(cnf)
+        ends_by_participant: list[list[int]] = []
+        thresholds_by_participant: list[list[int]] = []
+
+        for participant, meetings in enumerate(self.inst.meetings_by_business):
+            if len(meetings) < 2:
+                ends_by_participant.append([])
+                thresholds_by_participant.append([])
+                continue
+
+            self._build_prefix_suffix(cnf, participant)
+            possible = {
+                slot
+                for slot in range(self.inst.n_total_slots)
+                if self.used_or_none(participant, slot) is not None
+            }
+            ends: list[int] = []
+            for slot in range(1, self.inst.n_total_slots - 1):
+                next_used = self.used_or_none(participant, slot + 1)
+                if next_used is None or not any(prior < slot for prior in possible):
+                    continue
+                end = self.break_group_end(participant, slot)
+                current_used = self.used_or_none(participant, slot)
+                prefix = self.prefix_used(participant, slot - 1)
+
+                # end <-> next_used AND NOT current_used AND prefix.
+                cnf.append([-end, next_used])
+                if current_used is not None:
+                    cnf.append([-end, -current_used])
+                cnf.append([-end, prefix])
+                reverse = [-next_used, -prefix, end]
+                if current_used is not None:
+                    reverse.insert(1, current_used)
+                cnf.append(reverse)
+                ends.append(end)
+
+            thresholds = self._add_exact_cardinality_thresholds(
+                cnf,
+                ends,
+                participant=participant,
+                family="break_groups",
+                upper_bound=self.inst.max_breaks_per_participant,
+            )
+            ends_by_participant.append(ends)
+            thresholds_by_participant.append(thresholds)
+
+        return ends_by_participant, thresholds_by_participant
+
     def _add_implied_constraint_1(self, cnf: CNF, participant: int) -> None:
         marker = f"(43) exactly |Mp| {self.domain_mode} usedSlot variables"
         if marker not in self.enabled_constraints:
@@ -1634,13 +1894,30 @@ class B2BSATModel:
         self.enabled_constraints.append(
             "exact max/min objective gap over P* with no hard upper bound"
         )
-        if len(self.objective_participants) <= 1:
+        return self._add_exact_range(
+            cnf,
+            thresholds_by_participant,
+            participants=self.objective_participants,
+            family="idle_slots",
+        )
+
+    def _add_exact_range(
+        self,
+        cnf: CNF,
+        thresholds_by_participant: list[list[int]],
+        *,
+        participants: tuple[int, ...],
+        family: str,
+    ) -> list[int]:
+        """Encode the exact max--min range of a unary threshold family."""
+
+        if len(participants) <= 1:
             return []
 
         global_upper = max(
             (
                 len(thresholds_by_participant[participant])
-                for participant in self.objective_participants
+                for participant in participants
             ),
             default=0,
         )
@@ -1649,16 +1926,16 @@ class B2BSATModel:
         min_lits: list[int] = []
 
         for amount in range(1, global_upper + 1):
-            max_lit = self.max_break(amount)
-            min_lit = self.min_break(amount)
-            gap_lit = self.dif_break(amount)
+            max_lit = self.range_max(family, amount)
+            min_lit = self.range_min(family, amount)
+            gap_lit = self.range_difference(family, amount)
             max_lits.append(max_lit)
             min_lits.append(min_lit)
             gap_lits.append(gap_lit)
 
             present = [
                 thresholds_by_participant[participant][amount - 1]
-                for participant in self.objective_participants
+                for participant in participants
                 if amount <= len(thresholds_by_participant[participant])
             ]
 
@@ -1669,7 +1946,7 @@ class B2BSATModel:
             else:
                 cnf.append([-max_lit])
 
-            if len(present) != len(self.objective_participants):
+            if len(present) != len(participants):
                 cnf.append([-min_lit])
             else:
                 for threshold in present:
@@ -1686,6 +1963,126 @@ class B2BSATModel:
 
         return gap_lits
 
+    def _build_objective_family(
+        self,
+        cnf: CNF,
+    ) -> tuple[
+        list[list[int]],
+        list[int],
+        list[list[int]],
+        list[list[int]],
+        list[int],
+        tuple[ObjectiveTier, ...],
+        str,
+    ]:
+        """Build only the objective components required by ``objective_mode``."""
+
+        needs_idle = self.objective_mode in {"ir", "ir_is", "bg_ir_is"}
+        needs_groups = self.objective_mode in {"bg_d2", "bg_ir_is"}
+
+        idle_thresholds = [[] for _ in range(self.inst.n_business)]
+        idle_range_lits: list[int] = []
+        if needs_idle:
+            idle_thresholds = self._add_span_break_thresholds(cnf)
+            idle_range_lits = self._add_gap_objective(cnf, idle_thresholds)
+
+        group_ends = [[] for _ in range(self.inst.n_business)]
+        group_thresholds = [[] for _ in range(self.inst.n_business)]
+        group_range_lits: list[int] = []
+        if needs_groups:
+            group_ends, group_thresholds = self._add_break_group_thresholds(cnf)
+
+        idle_sum_lits = [
+            literal
+            for participant in self.objective_participants
+            for literal in idle_thresholds[participant]
+        ]
+        group_sum_lits = [
+            literal
+            for participant_thresholds in group_thresholds
+            for literal in participant_thresholds
+        ]
+
+        if self.objective_mode == "bg_d2":
+            group_range_lits = self._add_exact_range(
+                cnf,
+                group_thresholds,
+                participants=tuple(range(self.inst.n_business)),
+                family="break_groups",
+            )
+            self._add_atmost_seqcounter(cnf, group_range_lits, 2)
+            self.enabled_constraints.append("historical hard cap Delta_G <= 2")
+            tiers = (
+                ObjectiveTier(
+                    "total_break_groups",
+                    tuple(group_sum_lits),
+                    len(group_sum_lits),
+                    1,
+                ),
+            )
+            name = "total_break_groups_subject_to_range_at_most_2"
+        elif self.objective_mode == "ir_is":
+            primary_weight = len(idle_sum_lits) + 1
+            tiers = (
+                ObjectiveTier(
+                    "idle_range_pstar",
+                    tuple(idle_range_lits),
+                    len(idle_range_lits),
+                    primary_weight,
+                ),
+                ObjectiveTier(
+                    "total_internal_idle_slots",
+                    tuple(idle_sum_lits),
+                    len(idle_sum_lits),
+                    1,
+                ),
+            )
+            name = "lexicographic_idle_range_then_idle_sum"
+        elif self.objective_mode == "bg_ir_is":
+            idle_weight = len(idle_sum_lits) + 1
+            group_weight = (len(idle_range_lits) + 1) * idle_weight
+            tiers = (
+                ObjectiveTier(
+                    "total_break_groups",
+                    tuple(group_sum_lits),
+                    len(group_sum_lits),
+                    group_weight,
+                ),
+                ObjectiveTier(
+                    "idle_range_pstar",
+                    tuple(idle_range_lits),
+                    len(idle_range_lits),
+                    idle_weight,
+                ),
+                ObjectiveTier(
+                    "total_internal_idle_slots",
+                    tuple(idle_sum_lits),
+                    len(idle_sum_lits),
+                    1,
+                ),
+            )
+            name = "lexicographic_break_groups_idle_range_idle_sum"
+        else:
+            tiers = (
+                ObjectiveTier(
+                    "idle_range_pstar",
+                    tuple(idle_range_lits),
+                    len(idle_range_lits),
+                    1,
+                ),
+            )
+            name = "internal_idle_slot_range_pstar"
+
+        return (
+            idle_thresholds,
+            idle_range_lits,
+            group_ends,
+            group_thresholds,
+            group_range_lits,
+            tiers,
+            name,
+        )
+
     # Decoding and independent validation ------------------------------
 
     def decode_assignment(self, sat_model: list[int]) -> list[int]:
@@ -1697,9 +2094,22 @@ class B2BSATModel:
         return assignment
 
     def encoded_objective_value(self, sat_model: list[int]) -> int:
+        """Return the exact scalarized MaxSAT cost of a model."""
+
+        vector = self.encoded_objective_vector(sat_model)
+        artifacts = self.build_base_cnf()
+        return sum(
+            tier.scalar_weight * value
+            for tier, value in zip(artifacts.objective_tiers, vector)
+        )
+
+    def encoded_objective_vector(self, sat_model: list[int]) -> tuple[int, ...]:
         artifacts = self.build_base_cnf()
         positives = {lit for lit in sat_model if lit > 0}
-        return sum(lit in positives for lit in artifacts.objective_lits)
+        return tuple(
+            sum(lit in positives for lit in tier.literals)
+            for tier in artifacts.objective_tiers
+        )
 
     def objective_consistency_errors(
         self,
@@ -1707,25 +2117,41 @@ class B2BSATModel:
         stats: B2BSolutionStats,
         *,
         imposed_bound: int | None = None,
+        imposed_bounds: tuple[int, ...] | None = None,
         solver_cost: int | None = None,
     ) -> list[str]:
-        encoded = self.encoded_objective_value(sat_model)
-        expected = stats.objective_gap
+        encoded_vector = self.encoded_objective_vector(sat_model)
+        expected_vector = stats.objective_vector
+        scalar_cost = self.encoded_objective_value(sat_model)
         errors: list[str] = []
-        if encoded != expected:
+        if encoded_vector != expected_vector:
             errors.append(
                 "objective encoding mismatch: "
-                f"encoded gap={encoded}, schedule gap={expected}"
+                f"encoded={encoded_vector}, schedule={expected_vector}"
             )
-        if imposed_bound is not None and encoded > imposed_bound:
+        if imposed_bound is not None and encoded_vector[0] > imposed_bound:
             errors.append(
                 "objective-bound violation: "
-                f"encoded gap={encoded}, imposed bound={imposed_bound}"
+                f"encoded primary={encoded_vector[0]}, "
+                f"imposed bound={imposed_bound}"
             )
-        if solver_cost is not None and solver_cost != encoded:
+        if imposed_bounds is not None:
+            for index, bound in enumerate(imposed_bounds):
+                if index < len(encoded_vector) and encoded_vector[index] > bound:
+                    errors.append(
+                        "objective-bound violation: "
+                        f"tier={index + 1}, encoded={encoded_vector[index]}, "
+                        f"imposed bound={bound}"
+                    )
+        if solver_cost is not None and solver_cost != scalar_cost:
             errors.append(
                 "solver-cost mismatch: "
-                f"solver cost={solver_cost}, encoded gap={encoded}"
+                f"solver cost={solver_cost}, encoded scalar={scalar_cost}"
+            )
+        if self.objective_mode == "bg_d2" and stats.break_group_range > 2:
+            errors.append(
+                "historical fairness-cap violation: "
+                f"Delta_G={stats.break_group_range}>2"
             )
         return errors
 
@@ -1734,6 +2160,7 @@ class B2BSATModel:
             self.inst,
             assignment,
             participants=self.objective_participants,
+            objective_mode=self.objective_mode,
         )
 
     def validate_assignment(self, assignment: list[int]) -> list[str]:
@@ -1791,6 +2218,11 @@ def _main() -> None:
         choices=sorted(VALID_DOMAIN_MODES),
         default="reduced",
     )
+    parser.add_argument(
+        "--objective-mode",
+        choices=sorted(VALID_OBJECTIVE_MODES),
+        default="ir",
+    )
     parser.add_argument("--write-cnf", type=Path)
     parser.add_argument("--write-wcnf", type=Path)
     parser.add_argument("--skip-meetingsx-validation", action="store_true")
@@ -1818,6 +2250,7 @@ def _main() -> None:
         domain_filter_graph=args.domain_filter_graph,
         encoding_variant=args.encoding_variant,
         domain_mode=args.domain_mode,
+        objective_mode=args.objective_mode,
     )
     artifacts = model.build_base_cnf()
 
@@ -1829,6 +2262,8 @@ def _main() -> None:
     print(f"precedence_configuration={artifacts.precedence_configuration}")
     print(f"domain_mode={artifacts.domain_mode}")
     print(f"domain_filter_graph={artifacts.domain_filter_graph}")
+    print(f"domain_filter_iterations={artifacts.domain_filter_iterations}")
+    print(f"domain_filter_seconds={artifacts.domain_filter_seconds:.6f}")
     print(
         "schedule_candidates="
         f"active:{artifacts.active_schedule_candidates}, "
@@ -1856,6 +2291,14 @@ def _main() -> None:
     print(f"vars={artifacts.n_vars}")
     print(f"clauses={artifacts.n_clauses}")
     print(f"objective={artifacts.objective_name}")
+    print(f"objective_mode={artifacts.objective_mode}")
+    print(
+        "objective_tiers="
+        + ", ".join(
+            f"{tier.name}:{len(tier.literals)}@{tier.scalar_weight}"
+            for tier in artifacts.objective_tiers
+        )
+    )
     print(
         "objective_participants="
         f"{[participant + 1 for participant in artifacts.objective_participants]}"

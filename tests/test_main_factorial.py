@@ -33,6 +33,7 @@ class MainPrecedenceFactorialTests(unittest.TestCase):
         default_args = parse_args([])
         self.assertEqual(default_args.maxsat_backend, "uwrmaxsat")
         self.assertEqual(default_args.sat_backend, "cadical")
+        self.assertEqual(default_args.objective_mode, "ir")
         self.assertEqual(
             default_args.domain_filter_graph,
             "distance_closure",
@@ -145,6 +146,65 @@ class MainPrecedenceFactorialTests(unittest.TestCase):
         self.assertTrue(direct["configuration_id"].startswith("cfg4__"))
         self.assertIn("__f-direct__", direct["configuration_id"])
         self.assertEqual(direct["factor_f"], "Filter-E")
+
+    def test_objective_modes_have_distinct_configuration_ids(self) -> None:
+        common = {
+            "solver_name": "maxsat",
+            "precedence_encoding": "sparse_suffix",
+            "precedence_graph": "distance_closure",
+            "encoding_variant": "imp12+",
+            "domain_mode": "reduced",
+            "maxsat_backend": "uwrmaxsat",
+            "sat_backend": "cadical",
+        }
+        metadata = {
+            objective_mode: configuration_metadata(
+                **common,
+                objective_mode=objective_mode,
+            )
+            for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is")
+        }
+
+        self.assertEqual(
+            len({row["configuration_id"] for row in metadata.values()}),
+            4,
+        )
+        self.assertEqual(
+            metadata["ir"]["configuration_label"],
+            "R-SS-DC-ST-IRP-UW-IC12P",
+        )
+        self.assertIn(
+            "o-break_groups_d2",
+            metadata["bg_d2"]["configuration_id"],
+        )
+        self.assertEqual(
+            metadata["ir_is"]["factor_o"],
+            "IdleRangeThenIdleSum",
+        )
+
+    def test_non_ir_modes_reject_unimplemented_exact_baselines(self) -> None:
+        with redirect_stderr(StringIO()):
+            with self.assertRaises(SystemExit):
+                parse_args(
+                    [
+                        "--solver",
+                        "exact_all",
+                        "--objective-mode",
+                        "ir_is",
+                    ]
+                )
+
+        with self.assertRaises(ValueError):
+            configuration_metadata(
+                solver_name="gurobi_mip",
+                precedence_encoding="native_linear",
+                precedence_graph="distance_closure",
+                encoding_variant="n/a",
+                domain_mode="reduced",
+                maxsat_backend="uwrmaxsat",
+                sat_backend="cadical",
+                objective_mode="bg_d2",
+            )
 
     def test_legacy_and_independent_flags_cannot_be_mixed(self) -> None:
         with redirect_stderr(StringIO()):

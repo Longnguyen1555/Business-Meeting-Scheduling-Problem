@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-official-core-v1",
+  "description": "E1-E3 confirmatory All-126 campaign; 8,820 single-worker runs.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260808,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "e1_historical_representation",
+      "datasets": ["official_all_126"],
+      "repetitions": 5,
+      "configurations": [
+        {
+          "id": "org_full_bg_d2_uwr",
+          "executor": "org_bg_d2",
+          "objective_mode": "bg_d2",
+          "backend": "uwrmaxsat"
+        },
+        {
+          "id": "compact_full_bg_d2_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_bg_d2_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    },
+    {
+      "id": "e2_objective_representation",
+      "datasets": ["official_all_126"],
+      "repetitions": 5,
+      "configurations": [
+        {
+          "id": "org_full_ir_uwr",
+          "executor": "org_ir",
+          "objective_mode": "ir"
+        },
+        {
+          "id": "compact_full_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_full_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    },
+    {
+      "id": "e3_optimizer_additional",
+      "datasets": ["official_all_126"],
+      "repetitions": 5,
+      "configurations": [
+        {
+          "id": "compact_reduced_bg_d2_multiple_cadical",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_bg_d2_incremental_cadical",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_multiple_cadical",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_incremental_cadical",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_is_multiple_cadical",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "compact_reduced_ir_is_incremental_cadical",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}
