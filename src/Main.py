@@ -496,6 +496,14 @@ def configuration_metadata(
         )
     )
     label = "-".join(label_parts)
+    optimization_procedure_display_name = {
+        "maxsat": "one-shot weighted MaxSAT",
+        "multiple": "restart-based multi-phase SAT",
+        "incremental": (
+            "incremental multi-phase SAT with persistent solver state"
+        ),
+    }[solver_name]
+    domain_display_name = "Full" if domain_mode == "full" else "Reduced"
     identifier_parts = [
         (
             "cfg2" if domain_filter_graph == "distance_closure" else "cfg4"
@@ -522,6 +530,14 @@ def configuration_metadata(
         "configuration_label": label,
         "configuration_id": identifier,
         "configuration_key": identifier,
+        "model_family_display_name": "Compact",
+        "model_configuration_display_name": (
+            f"Compact/{domain_display_name}"
+        ),
+        "implementation_provenance": "project_implementation",
+        "optimization_procedure_display_name": (
+            optimization_procedure_display_name
+        ),
         "optimization_engine": optimization_engine,
         "idle_encoding": "span_threshold",
         "domain_filter_graph": domain_filter_graph,

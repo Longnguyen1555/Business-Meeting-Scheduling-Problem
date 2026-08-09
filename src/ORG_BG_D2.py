@@ -533,6 +533,13 @@ def solve_instance(
         "formalism": "MaxSAT",
         "model_family": "ORGHistorical",
         "formulation_name": "ORG-Historical-BG-d2",
+        # Stable identifiers above are retained for compatibility with existing
+        # manifests.  Manuscript-facing analysis must use these display fields:
+        # this model is an independent reimplementation, not original source.
+        "model_family_display_name": "Published-style",
+        "model_configuration_display_name": "Published-style/Full",
+        "implementation_provenance": "independent_reimplementation",
+        "optimization_procedure_display_name": "one-shot weighted MaxSAT",
         "domain_mode": "legacy_full",
         "domain_filter_graph": "n/a",
         "precedence_encoding": "pairwise",

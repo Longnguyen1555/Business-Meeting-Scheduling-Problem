@@ -57,6 +57,14 @@ class HistoricalBGBaselineTests(unittest.TestCase):
         self.assertEqual(tuple(compact["objective_vector"]), (1,))
         self.assertEqual(historical["validation_errors"], "")
         self.assertLessEqual(historical["break_group_range"], 2)
+        self.assertEqual(
+            historical["model_configuration_display_name"],
+            "Published-style/Full",
+        )
+        self.assertEqual(
+            historical["implementation_provenance"],
+            "independent_reimplementation",
+        )
 
     def test_both_models_reject_base_feasible_fairness_cap_violation(self) -> None:
         instance = _fixed_instance(violate_cap=True)
