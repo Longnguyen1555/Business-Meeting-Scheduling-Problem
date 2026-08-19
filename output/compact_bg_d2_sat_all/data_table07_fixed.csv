@@ -1,0 +1,121 @@
+instance,precedence_encoding,precedence_graph,precedence_configuration,domain_filter_graph,solver,objective,objective_mode,domain_mode,basic,imp1,imp2,imp12,imp12+,n/a
+forum-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.3 20,-
+forum-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.9 20,-
+forum-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,6.0 20,-
+forum-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.8 49,-
+forum-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.6 49,-
+forum-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.5 49,-
+forum-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.3 30,-
+forum-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.1 30,-
+forum-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,11.3 30,-
+forum-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forum-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forum-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forum-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.5 20,-
+forum-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.6 20,-
+forum-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,6.1 20,-
+forum-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.0 50,-
+forum-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.7 50,-
+forum-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,6.7 50,-
+forum-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,8.9 20,-
+forum-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,10.7 20,-
+forum-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,16.9 20,-
+forum-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forum-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forum-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 7,-
+forumt-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.4 7,-
+forumt-14.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.8 7,-
+forumt-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.0 7,-
+forumt-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 7,-
+forumt-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 7,-
+forumt-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 9,-
+forumt-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 9,-
+forumt-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 9,-
+forumt-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafe.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 9,-
+forumt-14crafe.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 9,-
+forumt-14crafe.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.9 9,-
+forumt-14crafe.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafe.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+forumt-14crafe.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.1 1,-
+tic-12.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.1 1,-
+tic-12.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.1 1,-
+tic-12.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.1 1,-
+tic-12crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.2 1,-
+tic-12crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.2 1,-
+tic-12crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-12crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.4 2,-
+tic-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.4 2,-
+tic-13.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 2,-
+tic-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.3 13,-
+tic-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 13,-
+tic-13.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 13,-
+tic-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.3 1,-
+tic-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.4 1,-
+tic-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.6 1,-
+tic-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.2 16,-
+tic-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.3 16,-
+tic-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.4 16,-
+tic-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.9 6,-
+tic-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.7 6,-
+tic-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.6 6,-
+tic-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.8 16,-
+tic-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,14.8 16,-
+tic-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,16.6 16,-
+tic-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 2,-
+tic-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 2,-
+tic-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.1 2,-
+tic-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.9 3,-
+tic-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.2 3,-
+tic-14crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.2 3,-
+tic-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 2,-
+tic-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.5 2,-
+tic-14crafd.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,0.7 2,-
+tic-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+tic-14crafd.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-13crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.3 20,-
+ticf-13crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.9 20,-
+ticf-13crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,7.3 20,-
+ticf-13crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,1.8 49,-
+ticf-13crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.3 49,-
+ticf-13crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.8 49,-
+ticf-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.0 27,-
+ticf-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,4.0 27,-
+ticf-13crafb.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,14.4 27,-
+ticf-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-13crafb.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.3 20,-
+ticf-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,5.3 20,-
+ticf-13crafc.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,7.1 20,-
+ticf-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.0 49,-
+ticf-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,2.5 49,-
+ticf-13crafc.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,8.4 49,-
+ticf-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,8.5 21,-
+ticf-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,9.5 21,-
+ticf-14crafa.fixed020-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,16.2 21,-
+ticf-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
+ticf-14crafa.fixed040-Forb,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,multiple,total_break_groups_subject_to_range_at_most_2,bg_d2,full,-,-,-,-,UNSAT,-
