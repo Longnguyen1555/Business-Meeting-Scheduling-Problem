@@ -1,2 +1,0 @@
-instance,precedence_encoding,precedence_graph,precedence_configuration,domain_filter_graph,solver,objective,objective_mode,domain_mode,basic,imp1,imp2,imp12,imp12+,n/a
-tic-12.original,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,reduced,-,-,-,-,0.1 0,-
