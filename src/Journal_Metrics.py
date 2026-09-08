@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from B2B_Instance import B2BInstance, VALID_OBJECTIVE_MODES
+from B2B_Instance import B2BInstance
+from B2B_Instance_CompactV2 import VALID_V2_OBJECTIVE_MODES
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,10 @@ class JournalScheduleMetrics:
     participant_break_groups: tuple[int, ...]
     total_break_groups: int
     break_group_range: int
+    max_idle_pstar: int
+    idle_sla_threshold: int
+    idle_sla_violations: int
+    idle_sla_excess: int
     objective_mode: str
     objective_vector: tuple[int, ...]
     historical_fairness_cap_satisfied: bool
@@ -45,6 +50,7 @@ def evaluate_journal_schedule(
     assignment: Iterable[int],
     *,
     objective_mode: str,
+    idle_sla_threshold: int = 2,
 ) -> JournalScheduleMetrics:
     """Evaluate all journal metrics directly from meeting-slot assignments.
 
@@ -53,8 +59,10 @@ def evaluate_journal_schedule(
     Feasibility remains a separate check against the original hard constraints.
     """
 
-    if objective_mode not in VALID_OBJECTIVE_MODES:
+    if objective_mode not in VALID_V2_OBJECTIVE_MODES:
         raise ValueError(f"Unknown objective_mode={objective_mode!r}")
+    if idle_sla_threshold < 0:
+        raise ValueError("idle_sla_threshold must be non-negative")
 
     occupied = _occupied_slots(instance, assignment)
     participant_idle = tuple(
@@ -85,11 +93,16 @@ def evaluate_journal_schedule(
     )
     idle_sum = sum(participant_idle)
     group_sum = sum(participant_groups)
+    max_idle = max(pstar_values, default=0)
+    sla_violations = sum(value > idle_sla_threshold for value in pstar_values)
+    sla_excess = sum(max(0, value - idle_sla_threshold) for value in pstar_values)
     vectors = {
         "ir": (idle_range,),
         "bg_d2": (group_sum,),
         "ir_is": (idle_range, idle_sum),
         "bg_ir_is": (group_sum, idle_range, idle_sum),
+        "max_idle_is": (max_idle, idle_sum),
+        "sla_idle": (sla_violations, sla_excess, idle_sum),
     }
     return JournalScheduleMetrics(
         participant_internal_idle_slots=participant_idle,
@@ -98,6 +111,10 @@ def evaluate_journal_schedule(
         participant_break_groups=participant_groups,
         total_break_groups=group_sum,
         break_group_range=group_range,
+        max_idle_pstar=max_idle,
+        idle_sla_threshold=idle_sla_threshold,
+        idle_sla_violations=sla_violations,
+        idle_sla_excess=sla_excess,
         objective_mode=objective_mode,
         objective_vector=vectors[objective_mode],
         historical_fairness_cap_satisfied=group_range <= 2,
@@ -110,11 +127,13 @@ def objective_metric_errors(
     *,
     objective_mode: str,
     encoded_vector: tuple[int, ...],
+    idle_sla_threshold: int = 2,
 ) -> list[str]:
     metrics = evaluate_journal_schedule(
         instance,
         assignment,
         objective_mode=objective_mode,
+        idle_sla_threshold=idle_sla_threshold,
     )
     errors: list[str] = []
     if encoded_vector != metrics.objective_vector:

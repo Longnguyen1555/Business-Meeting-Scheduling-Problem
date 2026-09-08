@@ -14,12 +14,11 @@ from pysat import __version__ as pysat_version
 from pysat.examples.rc2 import RC2
 from pysat.formula import WCNF
 
-from B2B_Instance import (
-    VALID_OBJECTIVE_MODES,
-    B2BInstance,
-    B2BSATModel,
-    B2BSolutionStats,
-    read_instance,
+from B2B_Instance import B2BInstance, B2BSolutionStats, ObjectiveTier, read_instance
+from B2B_Model_Factory import (
+    boolean_model_metadata,
+    create_boolean_model,
+    validate_boolean_configuration,
 )
 from Journal_Metrics import objective_metric_errors
 
@@ -146,6 +145,36 @@ def _subprocess_text(value: str | bytes | None) -> str:
     return value
 
 
+def decode_scalar_objective_vector(
+    scalar_cost: int,
+    objective_tiers: tuple[ObjectiveTier, ...],
+) -> tuple[int, ...] | None:
+    """Decode a mixed-radix WCNF cost only when the tier weights prove it safe.
+
+    A lexicographic tier weight must equal the product of every lower tier's
+    ``upper_bound + 1``.  This is stronger than merely dominating lower tiers:
+    it makes the scalar cost a unique mixed-radix representation.  The model
+    encoders intentionally construct all multi-tier objectives this way.
+    """
+
+    if scalar_cost < 0 or not objective_tiers:
+        return None
+    expected_weight = 1
+    for tier in reversed(objective_tiers):
+        if tier.upper_bound < 0 or tier.scalar_weight != expected_weight:
+            return None
+        expected_weight *= tier.upper_bound + 1
+
+    remaining = scalar_cost
+    decoded: list[int] = []
+    for tier in objective_tiers:
+        value, remaining = divmod(remaining, tier.scalar_weight)
+        if value > tier.upper_bound:
+            return None
+        decoded.append(value)
+    return tuple(decoded) if remaining == 0 else None
+
+
 class B2BMaxSATSolver:
     """Exact one-shot MaxSAT optimization of a journal objective mode.
 
@@ -168,13 +197,30 @@ class B2BMaxSATSolver:
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
         objective_mode: str = "ir",
+        model_family: str = "compact",
+        capacity_mode: str | None = None,
+        capacity_cardinality: str = "seqcounter",
+        bg_counter_mode: str = "shared_dp",
+        idle_sla_threshold: int = 2,
+        hybrid_suffix_density: float = 0.70,
         backend: MaxSATBackend | str | None = None,
         uwrmaxsat_bin: str | Path | None = None,
         uwrmaxsat_sha256: str | None = None,
         uwrmaxsat_timeout: float | None = None,
     ) -> None:
-        if objective_mode not in VALID_OBJECTIVE_MODES:
-            raise ValueError(f"Unknown objective_mode={objective_mode!r}")
+        # Validate requested model/objective semantics before probing an
+        # external MaxSAT executable.  This preserves the legacy error
+        # contract for an invalid objective while allowing V2-only objectives.
+        validate_boolean_configuration(
+            model_family=model_family,
+            objective_mode=objective_mode,
+            precedence_encoding=precedence_encoding,
+            capacity_mode=capacity_mode,
+            capacity_cardinality=capacity_cardinality,
+            bg_counter_mode=bg_counter_mode,
+            idle_sla_threshold=idle_sla_threshold,
+            hybrid_suffix_density=hybrid_suffix_density,
+        )
         selected_backend = (
             backend or os.environ.get("B2B_MAXSAT_BACKEND", "uwrmaxsat")
         ).lower()
@@ -253,7 +299,7 @@ class B2BMaxSATSolver:
             precedence_mode = "traditional"
 
         self.inst = _ensure_instance(instance_or_path)
-        self.model = B2BSATModel(
+        self.model = create_boolean_model(
             inst=self.inst,
             precedence_mode=precedence_mode,
             precedence_encoding=precedence_encoding,
@@ -262,6 +308,12 @@ class B2BMaxSATSolver:
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
             objective_mode=objective_mode,
+            model_family=model_family,
+            capacity_mode=capacity_mode,
+            capacity_cardinality=capacity_cardinality,
+            bg_counter_mode=bg_counter_mode,
+            idle_sla_threshold=idle_sla_threshold,
+            hybrid_suffix_density=hybrid_suffix_density,
         )
         self.artifacts = self.model.build_base_cnf()
 
@@ -280,17 +332,22 @@ class B2BMaxSATSolver:
         solver_message: str = "",
         solver_command: str = "",
     ) -> dict[str, Any]:
-        single_tier_cost = (
-            solver_cost
-            if stats is None
-            and solver_cost is not None
-            and len(self.artifacts.objective_tiers) == 1
+        decoded_cost_vector = (
+            decode_scalar_objective_vector(solver_cost, self.artifacts.objective_tiers)
+            if stats is None and solver_cost is not None
             else None
         )
         objective_vector = (
             stats.objective_vector
             if stats is not None
-            else ((single_tier_cost,) if single_tier_cost is not None else None)
+            else decoded_cost_vector
+        )
+        scalar_primary_cost = (
+            solver_cost
+            if stats is None
+            and solver_cost is not None
+            and len(self.artifacts.objective_tiers) == 1
+            else (objective_vector[0] if objective_vector else None)
         )
         return {
             "status": status,
@@ -334,12 +391,12 @@ class B2BMaxSATSolver:
             "objective_value": (
                 stats.objective_vector[0]
                 if stats is not None
-                else single_tier_cost
+                else scalar_primary_cost
             ),
             "primary_objective_value": (
                 stats.objective_vector[0]
                 if stats is not None
-                else single_tier_cost
+                else scalar_primary_cost
             ),
             "secondary_objective_value": (
                 stats.objective_vector[1]
@@ -429,6 +486,7 @@ class B2BMaxSATSolver:
             "optimizer_added_clauses_peak": 0,
             "optimizer_added_literals_peak": 0,
             "optimizer_added_clauses_cumulative": 0,
+            **boolean_model_metadata(self.model),
         }
 
     def _validate_model(
@@ -452,6 +510,7 @@ class B2BMaxSATSolver:
                 assignment,
                 objective_mode=self.artifacts.objective_mode,
                 encoded_vector=self.model.encoded_objective_vector(sat_model),
+                idle_sla_threshold=getattr(self.model, "idle_sla_threshold", 2),
             )
         )
         return assignment, stats, checks
@@ -459,6 +518,7 @@ class B2BMaxSATSolver:
     def _solve_with_rc2(
         self,
         verbose: bool,
+        incumbent_callback: Callable[[int | tuple[int, ...]], None] | None = None,
     ) -> dict[str, Any]:
         with RC2(self._build_wcnf()) as solver:
             sat_model = solver.compute()
@@ -472,6 +532,9 @@ class B2BMaxSATSolver:
             solver_cost = int(solver.cost)
 
         assignment, stats, checks = self._validate_model(sat_model, solver_cost)
+        if incumbent_callback is not None:
+            vector = stats.objective_vector
+            incumbent_callback(vector[0] if len(vector) == 1 else vector)
         if verbose:
             print(
                 "[MaxSAT/RC2 development backend] optimum vector="
@@ -492,7 +555,7 @@ class B2BMaxSATSolver:
         self,
         binary: Path,
         verbose: bool,
-        incumbent_callback: Callable[[int], None] | None = None,
+        incumbent_callback: Callable[[int | tuple[int, ...]], None] | None = None,
     ) -> dict[str, Any]:
         wcnf = self._build_wcnf()
         safe_stem = Path(self.inst.instance_name).stem or "instance"
@@ -512,17 +575,19 @@ class B2BMaxSATSolver:
             #
             #     o <cost>
             #
-            # For a single-tier objective such as bg_d2 this scalar cost is
-            # directly the objective/best_value, so it can safely be streamed to
-            # the outer controller as an incumbent.
+            # Scalar WCNF cost can be streamed only if its tier weights form a
+            # validated mixed-radix representation.  All current model
+            # families do; leave the safe non-streaming path available for any
+            # future encoding that uses merely dominating, non-unique weights.
             stream_incumbents = (
                 incumbent_callback is not None
-                and len(self.artifacts.objective_tiers) == 1
+                and decode_scalar_objective_vector(
+                    0, self.artifacts.objective_tiers
+                ) is not None
             )
 
-            # Preserve old behaviour when no callback is requested, or when the
-            # objective has multiple tiers and scalar WCNF cost cannot safely be
-            # interpreted as the primary objective.
+            # Preserve old behaviour when no callback is requested or scalar
+            # costs cannot be converted to an exact lexicographic vector.
             if not stream_incumbents:
                 try:
                     completed = subprocess.run(
@@ -661,10 +726,16 @@ class B2BMaxSATSolver:
                                 streamed_best_cost is None
                                 or candidate < streamed_best_cost
                             ):
+                                vector = decode_scalar_objective_vector(
+                                    candidate, self.artifacts.objective_tiers
+                                )
+                                if vector is None:
+                                    continue
                                 streamed_best_cost = candidate
-
                                 try:
-                                    incumbent_callback(candidate)
+                                    incumbent_callback(
+                                        vector[0] if len(vector) == 1 else vector
+                                    )
                                 except Exception:
                                     # Reporting an incumbent is auxiliary.
                                     # Never stop draining the solver's stdout just
@@ -918,10 +989,10 @@ class B2BMaxSATSolver:
     def solve(
         self,
         verbose: bool = False,
-        incumbent_callback: Callable[[int], None] | None = None,
+        incumbent_callback: Callable[[int | tuple[int, ...]], None] | None = None,
     ) -> dict[str, Any]:
         if self.backend == "rc2":
-            return self._solve_with_rc2(verbose)
+            return self._solve_with_rc2(verbose, incumbent_callback)
 
         binary = self.resolved_uwrmaxsat_bin
 
@@ -954,6 +1025,12 @@ def solve_b2b(
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
     objective_mode: str = "ir",
+    model_family: str = "compact",
+    capacity_mode: str | None = None,
+    capacity_cardinality: str = "seqcounter",
+    bg_counter_mode: str = "shared_dp",
+    idle_sla_threshold: int = 2,
+    hybrid_suffix_density: float = 0.70,
     backend: MaxSATBackend | str | None = None,
     uwrmaxsat_bin: str | Path | None = None,
     uwrmaxsat_sha256: str | None = None,
@@ -968,6 +1045,12 @@ def solve_b2b(
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
         objective_mode=objective_mode,
+        model_family=model_family,
+        capacity_mode=capacity_mode,
+        capacity_cardinality=capacity_cardinality,
+        bg_counter_mode=bg_counter_mode,
+        idle_sla_threshold=idle_sla_threshold,
+        hybrid_suffix_density=hybrid_suffix_density,
         backend=backend,
         uwrmaxsat_bin=uwrmaxsat_bin,
         uwrmaxsat_sha256=uwrmaxsat_sha256,

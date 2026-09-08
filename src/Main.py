@@ -24,7 +24,18 @@ except ImportError:  # Memory remains optional for benchmark portability.
     psutil = None
 
 from IncrementalSAT_Solver import B2BIncrementalSATSolver
-from B2B_Instance import VALID_OBJECTIVE_MODES, read_instance
+from B2B_Instance import read_instance
+from B2B_Instance_CompactV2 import (
+    VALID_BG_COUNTER_MODES,
+    VALID_CAPACITY_CARDINALITY,
+    VALID_CAPACITY_MODES,
+    VALID_V2_OBJECTIVE_MODES,
+)
+from B2B_Model_Factory import (
+    VALID_MODEL_FAMILIES,
+    boolean_model_metadata,
+    validate_boolean_configuration,
+)
 from CPLEX_CP_Solver import B2BCPLEXCPSolver
 from CPLEX_MIP_Solver import B2BCPLEXMIPSolver
 from Dataset_Manifest import (
@@ -58,11 +69,11 @@ SAT_SOLVERS = ["incremental", "multiple", "maxsat"]
 EXACT_SOLVERS = ["gurobi_mip", "cplex_mip", "cplex_cp"]
 SOLVERS = [*SAT_SOLVERS, *EXACT_SOLVERS]
 PRECEDENCE_MODES = ["traditional", "staircase"]
-PRECEDENCE_ENCODINGS = ["pairwise", "sparse_suffix"]
+PRECEDENCE_ENCODINGS = ["pairwise", "sparse_suffix", "hybrid_suffix"]
 PRECEDENCE_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_FILTER_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_MODES = ["full", "reduced"]
-OBJECTIVE_MODES = sorted(VALID_OBJECTIVE_MODES)
+OBJECTIVE_MODES = sorted(VALID_V2_OBJECTIVE_MODES)
 MAXSAT_BACKENDS = ["uwrmaxsat", "rc2"]
 SAT_BACKENDS = ["cadical", "glucose"]
 SAT_BACKEND_CODES = {"cadical": "CD", "glucose": "GL"}
@@ -70,7 +81,11 @@ MEMORY_SAMPLE_INTERVAL_SECONDS = 0.05
 QUEUE_GRACE_SECONDS = 1.0
 MAXSAT_REPORTING_MARGIN_SECONDS = 0.25
 DOMAIN_CODES = {"full": "F", "reduced": "R"}
-PRECEDENCE_ENCODING_CODES = {"pairwise": "PW", "sparse_suffix": "SS"}
+PRECEDENCE_ENCODING_CODES = {
+    "pairwise": "PW",
+    "sparse_suffix": "SS",
+    "hybrid_suffix": "HS",
+}
 PRECEDENCE_GRAPH_CODES = {"direct": "DE", "distance_closure": "DC"}
 # Compact labels use ASCII-safe codes; factor_i keeps the publication-facing
 # display name. In particular, IC12P is the compact code for display name
@@ -94,18 +109,24 @@ OBJECTIVE_CODES = {
     "bg_d2": "BGD2",
     "ir_is": "IRIS",
     "bg_ir_is": "BGIRIS",
+    "max_idle_is": "MAXIS",
+    "sla_idle": "SLAIS",
 }
 OBJECTIVE_NAMES = {
     "ir": "IdleRangePstar",
     "bg_d2": "BreakGroupsD2",
     "ir_is": "IdleRangeThenIdleSum",
     "bg_ir_is": "BreakGroupsThenIdleRangeThenIdleSum",
+    "max_idle_is": "MaxIdleThenIdleSum",
+    "sla_idle": "IdleSlaThenIdleSum",
 }
 OBJECTIVE_KEYS = {
     "ir": "idle_range_pstar",
     "bg_d2": "break_groups_d2",
     "ir_is": "idle_range_then_idle_sum",
     "bg_ir_is": "break_groups_idle_range_idle_sum",
+    "max_idle_is": "max_idle_then_idle_sum",
+    "sla_idle": "idle_sla_then_idle_sum",
 }
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = PROJECT_ROOT / "instances_manifest.csv"
@@ -174,6 +195,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--model-family",
+        choices=sorted(VALID_MODEL_FAMILIES),
+        default="compact",
+        help="Boolean model family; exact solvers retain their native formulations",
+    )
+    parser.add_argument(
         "--maxsat-backend",
         choices=MAXSAT_BACKENDS,
         default="uwrmaxsat",
@@ -200,13 +227,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--precedence-encoding",
-        choices=[*PRECEDENCE_ENCODINGS, "both"],
+        choices=[*PRECEDENCE_ENCODINGS, "both", "all"],
         help="P factor; defaults to both",
     )
     parser.add_argument(
         "--precedence-graph",
         choices=[*PRECEDENCE_GRAPHS, "both"],
         help="G factor; defaults to both",
+    )
+    parser.add_argument(
+        "--capacity-mode",
+        choices=sorted(VALID_CAPACITY_MODES),
+        default=None,
+        help="Compact-v2 capacity representation (default follows encoding variant)",
+    )
+    parser.add_argument(
+        "--capacity-cardinality",
+        choices=sorted(VALID_CAPACITY_CARDINALITY),
+        default="seqcounter",
+        help="Compact-v2 cardinality encoding for capacity constraints",
+    )
+    parser.add_argument(
+        "--bg-counter-mode",
+        choices=sorted(VALID_BG_COUNTER_MODES),
+        default="shared_dp",
+        help="Compact-v2 break-group counter implementation",
+    )
+    parser.add_argument(
+        "--idle-sla-threshold",
+        type=int,
+        default=2,
+        help="Compact-v2 idle SLA threshold used by sla_idle",
+    )
+    parser.add_argument(
+        "--hybrid-suffix-density",
+        type=float,
+        default=0.70,
+        help="Compact-v2 hybrid suffix density in [0, 1]",
     )
     parser.add_argument(
         "--domain-filter-graph",
@@ -292,6 +349,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.keep_path_aliases and args.data_dir is None:
         parser.error("--keep-path-aliases requires --data-dir")
+    if args.idle_sla_threshold < 0:
+        parser.error("--idle-sla-threshold must be non-negative")
+    if not 0.0 <= args.hybrid_suffix_density <= 1.0:
+        parser.error("--hybrid-suffix-density must be in [0, 1]")
+    try:
+        validate_boolean_configuration(
+            model_family=args.model_family,
+            objective_mode=args.objective_mode,
+            precedence_encoding=(
+                args.precedence_encoding
+                if args.precedence_encoding not in {"both", "all"}
+                else None
+            ),
+            capacity_mode=args.capacity_mode,
+            capacity_cardinality=args.capacity_cardinality,
+            bg_counter_mode=args.bg_counter_mode,
+            idle_sla_threshold=args.idle_sla_threshold,
+            hybrid_suffix_density=args.hybrid_suffix_density,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.model_family != "compact" and args.solver in {
+        *EXACT_SOLVERS,
+        "exact_all",
+        "all",
+    }:
+        parser.error("Compact V2 is available only to Boolean SAT/MaxSAT solvers")
     if args.objective_mode != "ir" and args.solver in {
         *EXACT_SOLVERS,
         "exact_all",
@@ -327,6 +411,12 @@ class RunConfiguration:
     encoding_variant: str
     domain_mode: str
     objective_mode: str = "ir"
+    model_family: str = "compact"
+    capacity_mode: str | None = None
+    capacity_cardinality: str = "seqcounter"
+    bg_counter_mode: str = "shared_dp"
+    idle_sla_threshold: int = 2
+    hybrid_suffix_density: float = 0.70
 
 
 def precedence_configurations(args: argparse.Namespace) -> list[tuple[str, str]]:
@@ -340,11 +430,17 @@ def precedence_configurations(args: argparse.Namespace) -> list[tuple[str, str]]
         modes = selected(args.precedence_mode, PRECEDENCE_MODES, "both")
         return [legacy[mode] for mode in modes]
 
-    encodings = selected(
-        args.precedence_encoding or "both",
-        PRECEDENCE_ENCODINGS,
-        "both",
-    )
+    requested_encoding = args.precedence_encoding or "both"
+    if requested_encoding == "both":
+        encodings = ["pairwise", "sparse_suffix"]
+    elif requested_encoding == "all":
+        encodings = (
+            list(PRECEDENCE_ENCODINGS)
+            if args.model_family == "compact_v2"
+            else ["pairwise", "sparse_suffix"]
+        )
+    else:
+        encodings = [requested_encoding]
     graphs = selected(
         args.precedence_graph or "both",
         PRECEDENCE_GRAPHS,
@@ -384,10 +480,18 @@ def configuration_metadata(
     sat_backend: str,
     domain_filter_graph: str = "distance_closure",
     objective_mode: str = "ir",
-) -> dict[str, str]:
+    model_family: str = "compact",
+    capacity_mode: str | None = None,
+    capacity_cardinality: str = "seqcounter",
+    bg_counter_mode: str = "shared_dp",
+    idle_sla_threshold: int = 2,
+    hybrid_suffix_density: float = 0.70,
+) -> dict[str, object]:
     """Return stable human and machine identifiers for one factor tuple."""
 
     if solver_name in EXACT_SOLVERS:
+        if model_family != "compact":
+            raise ValueError("exact solvers do not implement Compact V2")
         if objective_mode != "ir":
             raise ValueError(
                 f"{solver_name} does not implement objective_mode="
@@ -476,8 +580,16 @@ def configuration_metadata(
     else:
         raise ValueError(f"Unknown solver: {solver_name}")
 
-    if objective_mode not in VALID_OBJECTIVE_MODES:
-        raise ValueError(f"Unknown objective_mode={objective_mode!r}")
+    validate_boolean_configuration(
+        model_family=model_family,
+        objective_mode=objective_mode,
+        precedence_encoding=precedence_encoding,
+        capacity_mode=capacity_mode,
+        capacity_cardinality=capacity_cardinality,
+        bg_counter_mode=bg_counter_mode,
+        idle_sla_threshold=idle_sla_threshold,
+        hybrid_suffix_density=hybrid_suffix_density,
+    )
     domain_code = DOMAIN_CODES[domain_mode]
     encoding_code = PRECEDENCE_ENCODING_CODES[precedence_encoding]
     graph_code = PRECEDENCE_GRAPH_CODES[precedence_graph]
@@ -526,7 +638,7 @@ def configuration_metadata(
         )
     )
     identifier = "__".join(identifier_parts)
-    return {
+    metadata = {
         "configuration_label": label,
         "configuration_id": identifier,
         "configuration_key": identifier,
@@ -564,6 +676,53 @@ def configuration_metadata(
         "factor_s": optimization_engine,
         "factor_i": VARIANT_FACTOR_NAMES[encoding_variant],
     }
+    if model_family == "compact_v2":
+        # ``None`` is an encoder-level default, but identity must contain its
+        # effective semantic choice rather than collapsing distinct cells.
+        effective_capacity = capacity_mode or (
+            "global_cluster" if encoding_variant == "imp12+" else "meeting"
+        )
+        v2_identifier_parts = [
+            "cfgv2",
+            f"m-{domain_mode}",
+            *( ["f-direct"] if domain_filter_graph == "direct" else [] ),
+            f"p-{precedence_encoding}",
+            f"g-{precedence_graph}",
+            f"cap-{effective_capacity}",
+            f"card-{capacity_cardinality}",
+            f"bg-{bg_counter_mode}",
+            f"o-{OBJECTIVE_KEYS[objective_mode]}",
+            f"s-{optimization_engine.lower()}",
+            f"i-{encoding_variant.replace('+', 'plus')}",
+            f"backend-{backend_code.lower()}",
+        ]
+        if objective_mode == "sla_idle":
+            v2_identifier_parts.append(f"tau-{idle_sla_threshold}")
+        if precedence_encoding == "hybrid_suffix":
+            v2_identifier_parts.append(f"hsd-{hybrid_suffix_density:.2f}")
+        identifier = "__".join(v2_identifier_parts)
+        metadata.update(
+            {
+                "configuration_label": f"V2-{label}",
+                "configuration_id": identifier,
+                "configuration_key": identifier,
+                "model_family_display_name": "Compact V2",
+                "model_configuration_display_name": (
+                    f"Compact V2/{domain_display_name}"
+                ),
+                "capacity_mode": effective_capacity,
+                "capacity_cardinality": capacity_cardinality,
+                "bg_counter_mode": bg_counter_mode,
+                "idle_sla_threshold": idle_sla_threshold,
+                "hybrid_suffix_density": hybrid_suffix_density,
+                "factor_p": {
+                    "pairwise": "Pairwise",
+                    "sparse_suffix": "SparseSuffix",
+                    "hybrid_suffix": "HybridSuffix",
+                }[precedence_encoding],
+            }
+        )
+    return metadata
 
 
 def _instance_spec_from_paths(paths: list[Path]) -> InstanceSpec:
@@ -738,6 +897,12 @@ def benchmark_configurations(
                 encoding_variant=variant,
                 domain_mode=domain_mode,
                 objective_mode=args.objective_mode,
+                model_family=args.model_family,
+                capacity_mode=args.capacity_mode,
+                capacity_cardinality=args.capacity_cardinality,
+                bg_counter_mode=args.bg_counter_mode,
+                idle_sla_threshold=args.idle_sla_threshold,
+                hybrid_suffix_density=args.hybrid_suffix_density,
             )
             for domain_mode in domain_modes
             for domain_filter_graph in instance_domain_filter_configurations(
@@ -1117,6 +1282,7 @@ def _formula_metadata(
         "solver_binary_sha256": getattr(
             solver_object, "uwrmaxsat_binary_sha256", ""
         ),
+        **boolean_model_metadata(solver_object.model),
     }
 
 
@@ -1253,19 +1419,28 @@ def _result_payload(
             "backend_model_construction_seconds"
         ),
     }
+    payload.update(
+        {
+            key: result.get(key)
+            for key in (
+                "capacity_mode",
+                "capacity_cardinality",
+                "bg_counter_mode",
+                "idle_sla_threshold",
+                "hybrid_suffix_density",
+                "precedence_dense_suffix_meetings",
+                "precedence_dense_suffix_clauses",
+            )
+            if key in result
+        }
+    )
     payload["sat_result"] = status_to_sat_result(payload["status"])
     return payload
 
 
 def _worker(
-    solver_name: str,
+    configuration: RunConfiguration,
     instance_path: str,
-    precedence_encoding: str,
-    precedence_graph: str,
-    domain_filter_graph: str,
-    encoding_variant: str,
-    domain_mode: str,
-    objective_mode: str,
     maxsat_backend: str,
     uwrmaxsat_bin: str | None,
     uwrmaxsat_sha256: str | None,
@@ -1276,6 +1451,13 @@ def _worker(
     verbose: bool,
     output: mp.Queue[Any],
 ) -> None:
+    solver_name = configuration.solver_name
+    precedence_encoding = configuration.precedence_encoding
+    precedence_graph = configuration.precedence_graph
+    domain_filter_graph = configuration.domain_filter_graph
+    encoding_variant = configuration.encoding_variant
+    domain_mode = configuration.domain_mode
+    objective_mode = configuration.objective_mode
     started = time.perf_counter()
     try:
         instance = read_instance(instance_path)
@@ -1297,6 +1479,12 @@ def _worker(
                 "domain_mode": domain_mode,
                 "domain_filter_graph": domain_filter_graph,
                 "objective_mode": objective_mode,
+                "model_family": configuration.model_family,
+                "capacity_mode": configuration.capacity_mode,
+                "capacity_cardinality": configuration.capacity_cardinality,
+                "bg_counter_mode": configuration.bg_counter_mode,
+                "idle_sla_threshold": configuration.idle_sla_threshold,
+                "hybrid_suffix_density": configuration.hybrid_suffix_density,
             }
         if solver_name == "maxsat":
             solver_kwargs.update(
@@ -1335,7 +1523,7 @@ def _worker(
                 model_build_seconds=model_build_seconds,
             )
         )
-        if solver_name in {"incremental", "multiple"}:
+        if solver_name in SAT_SOLVERS:
             result = solver_object.solve(
                 verbose=verbose,
                 incumbent_callback=lambda value: output.put(
@@ -1390,6 +1578,12 @@ def _worker(
                 "encoding_variant": encoding_variant,
                 "domain_mode": domain_mode,
                 "objective_mode": objective_mode,
+                "model_family": configuration.model_family,
+                "capacity_mode": configuration.capacity_mode,
+                "capacity_cardinality": configuration.capacity_cardinality,
+                "bg_counter_mode": configuration.bg_counter_mode,
+                "idle_sla_threshold": configuration.idle_sla_threshold,
+                "hybrid_suffix_density": configuration.hybrid_suffix_density,
                 "runtime_seconds": round(time.perf_counter() - started, 6),
                 "runtime_scope": RUNTIME_SCOPE,
                 "runtime_censored": False,
@@ -1555,13 +1749,9 @@ def _terminal_payload(
 
 
 def run_with_timeout(
-    solver_name: str,
+    configuration: RunConfiguration,
     instance_path: Path,
-    precedence_encoding: str,
-    precedence_graph: str,
-    domain_filter_graph: str,
-    encoding_variant: str,
-    domain_mode: str,
+    *,
     maxsat_backend: str,
     uwrmaxsat_bin: str | None,
     uwrmaxsat_sha256: str | None,
@@ -1570,21 +1760,23 @@ def run_with_timeout(
     verbose: bool,
     threads: int = 1,
     random_seed: int = 0,
-    objective_mode: str = "ir",
 ) -> dict[str, Any]:
+    """Execute one named configuration under the existing hard wall timeout."""
+
+    solver_name = configuration.solver_name
+    precedence_encoding = configuration.precedence_encoding
+    precedence_graph = configuration.precedence_graph
+    domain_filter_graph = configuration.domain_filter_graph
+    encoding_variant = configuration.encoding_variant
+    domain_mode = configuration.domain_mode
+    objective_mode = configuration.objective_mode
     context = mp.get_context("spawn")
     output: mp.Queue[Any] = context.Queue()
     process = context.Process(
         target=_worker,
         args=(
-            solver_name,
+            configuration,
             str(instance_path),
-            precedence_encoding,
-            precedence_graph,
-            domain_filter_graph,
-            encoding_variant,
-            domain_mode,
-            objective_mode,
             maxsat_backend,
             uwrmaxsat_bin,
             uwrmaxsat_sha256,
@@ -1660,6 +1852,15 @@ def run_with_timeout(
 
     for key, value in metadata.items():
         result.setdefault(key, value)
+    # Metadata is normally emitted immediately after construction.  Retain the
+    # selected identity even when a global timeout stops the worker before its
+    # queue message can be delivered.
+    result.setdefault("model_family", configuration.model_family)
+    result.setdefault("capacity_mode", configuration.capacity_mode)
+    result.setdefault("capacity_cardinality", configuration.capacity_cardinality)
+    result.setdefault("bg_counter_mode", configuration.bg_counter_mode)
+    result.setdefault("idle_sla_threshold", configuration.idle_sla_threshold)
+    result.setdefault("hybrid_suffix_density", configuration.hybrid_suffix_density)
     if result.get("best_value") is None and metadata.get(
         "incumbent_best_value"
     ) is not None:
@@ -1693,6 +1894,12 @@ def run_with_timeout(
             maxsat_backend=maxsat_backend,
             sat_backend=sat_backend,
             objective_mode=objective_mode,
+            model_family=configuration.model_family,
+            capacity_mode=configuration.capacity_mode,
+            capacity_cardinality=configuration.capacity_cardinality,
+            bg_counter_mode=configuration.bg_counter_mode,
+            idle_sla_threshold=configuration.idle_sla_threshold,
+            hybrid_suffix_density=configuration.hybrid_suffix_density,
         )
     )
     result.setdefault("formula_scope", FORMULA_SCOPE)
@@ -1798,7 +2005,7 @@ def format_table_cell(result: dict[str, Any]) -> str:
 
 
 def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
-    grouped: dict[tuple[str, str, str, str, str, str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[object, ...], dict[str, Any]] = {}
     for result in results:
         key = (
             result["instance"],
@@ -1808,6 +2015,12 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             result["solver"],
             result["domain_mode"],
             result.get("objective_mode", "ir"),
+            result.get("model_family", "compact"),
+            result.get("capacity_mode"),
+            result.get("capacity_cardinality"),
+            result.get("bg_counter_mode"),
+            result.get("idle_sla_threshold") if result.get("objective_mode") == "sla_idle" else None,
+            result.get("hybrid_suffix_density") if result.get("precedence_encoding") == "hybrid_suffix" else None,
         )
         row = grouped.setdefault(
             key,
@@ -1824,6 +2037,20 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
                 "objective": result.get("objective", "IdleRange(P*)"),
                 "objective_mode": result.get("objective_mode", "ir"),
                 "domain_mode": result["domain_mode"],
+                "model_family": result.get("model_family", "compact"),
+                "capacity_mode": result.get("capacity_mode", ""),
+                "capacity_cardinality": result.get("capacity_cardinality", ""),
+                "bg_counter_mode": result.get("bg_counter_mode", ""),
+                "idle_sla_threshold": (
+                    result.get("idle_sla_threshold", "")
+                    if result.get("objective_mode") == "sla_idle"
+                    else ""
+                ),
+                "hybrid_suffix_density": (
+                    result.get("hybrid_suffix_density", "")
+                    if result.get("precedence_encoding") == "hybrid_suffix"
+                    else ""
+                ),
             },
         )
         row[result["encoding_variant"]] = format_table_cell(result)
@@ -1841,6 +2068,12 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             row["precedence_graph"],
             row["solver"],
             row["objective_mode"],
+            row["model_family"],
+            row["capacity_mode"],
+            row["capacity_cardinality"],
+            row["bg_counter_mode"],
+            row["idle_sla_threshold"],
+            row["hybrid_suffix_density"],
         )
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1854,6 +2087,12 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
         "objective",
         "objective_mode",
         "domain_mode",
+        "model_family",
+        "capacity_mode",
+        "capacity_cardinality",
+        "bg_counter_mode",
+        "idle_sla_threshold",
+        "hybrid_suffix_density",
         *AGGREGATE_VARIANTS,
     ]
     with path.open("w", newline="", encoding="utf-8") as stream:
@@ -2048,22 +2287,16 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             result = run_with_timeout(
-                configuration.solver_name,
+                configuration,
                 instance.path,
-                configuration.precedence_encoding,
-                configuration.precedence_graph,
-                configuration.domain_filter_graph,
-                configuration.encoding_variant,
-                configuration.domain_mode,
-                args.maxsat_backend,
-                args.uwrmaxsat_bin,
-                args.uwrmaxsat_sha256,
-                args.sat_backend,
-                args.timeout,
-                args.verbose,
-                args.threads,
-                args.random_seed,
-                configuration.objective_mode,
+                maxsat_backend=args.maxsat_backend,
+                uwrmaxsat_bin=args.uwrmaxsat_bin,
+                uwrmaxsat_sha256=args.uwrmaxsat_sha256,
+                sat_backend=args.sat_backend,
+                timeout_seconds=args.timeout,
+                verbose=args.verbose,
+                threads=args.threads,
+                random_seed=args.random_seed,
             )
             result = {
                 **instance_result_metadata(instance),

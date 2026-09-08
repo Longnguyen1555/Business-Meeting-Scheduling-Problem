@@ -6,7 +6,8 @@ from typing import Any, Callable
 
 from pysat.card import ITotalizer
 
-from B2B_Instance import B2BInstance, B2BSATModel, B2BSolutionStats, read_instance
+from B2B_Instance import B2BInstance, B2BSolutionStats, read_instance
+from B2B_Model_Factory import boolean_model_metadata, create_boolean_model
 from Journal_Metrics import objective_metric_errors
 from SAT_Backend import (
     create_sat_solver,
@@ -50,6 +51,12 @@ class B2BIncrementalSATSolver:
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
         objective_mode: str = "ir",
+        model_family: str = "compact",
+        capacity_mode: str | None = None,
+        capacity_cardinality: str = "seqcounter",
+        bg_counter_mode: str = "shared_dp",
+        idle_sla_threshold: int = 2,
+        hybrid_suffix_density: float = 0.70,
     ) -> None:
         if (
             precedence_mode is None
@@ -58,7 +65,7 @@ class B2BIncrementalSATSolver:
         ):
             precedence_mode = "traditional"
         self.inst = _ensure_instance(instance_or_path)
-        self.model = B2BSATModel(
+        self.model = create_boolean_model(
             inst=self.inst,
             precedence_mode=precedence_mode,
             precedence_encoding=precedence_encoding,
@@ -67,6 +74,12 @@ class B2BIncrementalSATSolver:
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
             objective_mode=objective_mode,
+            model_family=model_family,
+            capacity_mode=capacity_mode,
+            capacity_cardinality=capacity_cardinality,
+            bg_counter_mode=bg_counter_mode,
+            idle_sla_threshold=idle_sla_threshold,
+            hybrid_suffix_density=hybrid_suffix_density,
         )
         self.artifacts = self.model.build_base_cnf()
         self.solver_name = normalize_sat_backend(solver_name)
@@ -205,6 +218,7 @@ class B2BIncrementalSATSolver:
             "optimizer_added_clauses_cumulative": (
                 self.optimizer_added_clauses_cumulative
             ),
+            **boolean_model_metadata(self.model),
         }
 
     def _evaluate_sat_model(
@@ -231,6 +245,7 @@ class B2BIncrementalSATSolver:
                 assignment,
                 objective_mode=self.artifacts.objective_mode,
                 encoded_vector=self.model.encoded_objective_vector(sat_model),
+                idle_sla_threshold=getattr(self.model, "idle_sla_threshold", 2),
             )
         )
         return assignment, stats, checks
@@ -364,6 +379,11 @@ class B2BIncrementalSATSolver:
                     best_assignment,
                     objective_mode=self.artifacts.objective_mode,
                     encoded_vector=best_stats.objective_vector,
+                    idle_sla_threshold=getattr(
+                        self.model,
+                        "idle_sla_threshold",
+                        2,
+                    ),
                 )
             )
             if best_stats.objective_vector != tuple(proven):
@@ -394,6 +414,12 @@ def solve_b2b(
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
     objective_mode: str = "ir",
+    model_family: str = "compact",
+    capacity_mode: str | None = None,
+    capacity_cardinality: str = "seqcounter",
+    bg_counter_mode: str = "shared_dp",
+    idle_sla_threshold: int = 2,
+    hybrid_suffix_density: float = 0.70,
 ) -> dict[str, Any]:
     return B2BIncrementalSATSolver(
         instance_or_path=instance_or_path,
@@ -405,6 +431,12 @@ def solve_b2b(
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
         objective_mode=objective_mode,
+        model_family=model_family,
+        capacity_mode=capacity_mode,
+        capacity_cardinality=capacity_cardinality,
+        bg_counter_mode=bg_counter_mode,
+        idle_sla_threshold=idle_sla_threshold,
+        hybrid_suffix_density=hybrid_suffix_density,
     ).solve(verbose=verbose)
 
 
