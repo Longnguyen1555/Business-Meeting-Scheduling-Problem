@@ -1441,6 +1441,79 @@ class B2BSATModel:
             ]
             self._add_atmost_seqcounter(cnf, lits, self.inst.n_tables)
 
+    def slot_cluster_active(self, slot: int, cluster: int) -> int:
+        return self.vpool.id(
+            ("slotClusterActive", slot, cluster)
+        )
+    def _compute_slot_clusters(self, slot: int) -> list[list[int]]:
+        """Partition meetings eligible at one slot into participant-AMO groups."""
+
+        remaining = {
+            meeting
+            for meeting in range(self.inst.n_meetings)
+            if self.x_or_none(meeting, slot) is not None
+        }
+
+        clusters: list[list[int]] = []
+
+        while remaining:
+            best: list[int] = []
+
+            for meetings in self.inst.meetings_by_business:
+                candidate = sorted(
+                    remaining.intersection(meetings)
+                )
+
+                if len(candidate) > len(best):
+                    best = candidate
+
+            if not best:
+                best = [min(remaining)]
+
+            clusters.append(best)
+            remaining.difference_update(best)
+
+        return clusters
+
+    def _add_slot_cluster_capacity(self, cnf: CNF) -> None:
+        self.enabled_constraints.append(
+            "slot-aware participant-AMO clustered table capacity"
+        )
+
+        for slot in range(self.inst.n_total_slots):
+            clusters = self._compute_slot_clusters(slot)
+            active_clusters: list[int] = []
+
+            for cluster_index, meetings in enumerate(clusters):
+                member_lits = [
+                    self.x(meeting, slot)
+                    for meeting in meetings
+                    if self.x_or_none(meeting, slot) is not None
+                ]
+
+                if not member_lits:
+                    continue
+
+                if len(member_lits) == 1:
+                    active_clusters.append(member_lits[0])
+                    continue
+
+                cluster_lit = self.slot_cluster_active(
+                    slot,
+                    cluster_index,
+                )
+
+                active_clusters.append(cluster_lit)
+
+                # Any scheduled member activates its cluster.
+                for lit in member_lits:
+                    cnf.append([-lit, cluster_lit])
+
+            self._add_atmost_seqcounter(
+                cnf,
+                active_clusters,
+                self.inst.n_tables,
+            )
     def _compute_meeting_clusters(self) -> list[list[int]]:
         if self._clusters is not None:
             return self._clusters
@@ -1746,35 +1819,83 @@ class B2BSATModel:
         family: str,
         upper_bound: int,
     ) -> list[int]:
-        """Encode exact unary literals ``[sum(literals) >= k]``."""
+        """Shared exact unary counter.
 
-        thresholds: list[int] = []
-        for amount in range(1, min(upper_bound, len(literals)) + 1):
-            if family != "break_groups":
-                raise ValueError(f"Unsupported threshold family={family!r}")
-            threshold = self.break_group_threshold(participant, amount)
-            thresholds.append(threshold)
+        Returns threshold[k-1] <-> sum(literals) >= k.
+        """
 
-            at_least = CardEnc.atleast(
-                lits=literals,
-                bound=amount,
-                vpool=self.vpool,
-                encoding=EncType.seqcounter,
-            )
-            for clause in at_least.clauses:
-                cnf.append([-threshold, *clause])
+        if family != "break_groups":
+            raise ValueError(f"Unsupported threshold family={family!r}")
 
-            at_most = CardEnc.atmost(
-                lits=literals,
-                bound=amount - 1,
-                vpool=self.vpool,
-                encoding=EncType.seqcounter,
-            )
-            for clause in at_most.clauses:
-                cnf.append([threshold, *clause])
+        n = len(literals)
+        K = min(upper_bound, n)
 
-        for index in range(1, len(thresholds)):
-            cnf.append([-thresholds[index], thresholds[index - 1]])
+        if K == 0:
+            return []
+
+        previous: dict[int, int] = {}
+
+        for i, x in enumerate(literals, start=1):
+            current: dict[int, int] = {}
+
+            for k in range(1, min(i, K) + 1):
+
+                # Final row reuses the public threshold variable.
+                if i == n:
+                    out = self.break_group_threshold(participant, k)
+                else:
+                    out = self.vpool.id(
+                        ("breakGroupSharedCounter", participant, i, k)
+                    )
+
+                current[k] = out
+
+                # S[i,1] <-> S[i-1,1] OR x
+                if k == 1:
+                    if i == 1:
+                        self._add_equiv(cnf, out, x)
+                    else:
+                        self._add_equiv_or(
+                            cnf,
+                            out,
+                            previous[1],
+                            x,
+                        )
+                    continue
+
+                if k not in previous:
+                    lower = previous[k - 1]
+
+                    cnf.append([-out, lower])
+                    cnf.append([-out, x])
+                    cnf.append([-lower, -x, out])
+                    continue
+
+                same = previous[k]
+                lower = previous[k - 1]
+
+                # out <-> same OR (lower AND x)
+                #
+                # same -> out
+                cnf.append([-same, out])
+
+                # lower AND x -> out
+                cnf.append([-lower, -x, out])
+
+                # out -> same OR lower
+                cnf.append([-out, same, lower])
+
+                # out -> same OR x
+                cnf.append([-out, same, x])
+
+            previous = current
+
+        thresholds = [previous[k] for k in range(1, K + 1)]
+
+        # Redundant but useful propagation.
+        for k in range(1, len(thresholds)):
+            cnf.append([-thresholds[k], thresholds[k - 1]])
+
         return thresholds
 
     def _add_break_group_thresholds(

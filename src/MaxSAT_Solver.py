@@ -5,9 +5,10 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Callable
 
 from pysat import __version__ as pysat_version
 from pysat.examples.rc2 import RC2
@@ -485,10 +486,13 @@ class B2BMaxSATSolver:
             solver_backend="RC2",
         )
 
+    
+
     def _solve_with_uwrmaxsat(
         self,
         binary: Path,
         verbose: bool,
+        incumbent_callback: Callable[[int], None] | None = None,
     ) -> dict[str, Any]:
         wcnf = self._build_wcnf()
         safe_stem = Path(self.inst.instance_name).stem or "instance"
@@ -504,73 +508,281 @@ class B2BMaxSATSolver:
                     f"{binary} with timeout={self.uwrmaxsat_timeout:g}s"
                 )
 
-            try:
-                completed = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.uwrmaxsat_timeout,
-                    check=False,
-                    start_new_session=(os.name != "nt"),
-                )
-            except subprocess.TimeoutExpired as exc:
-                message = (
-                    "UWrMaxSAT timed out after "
-                    f"{self.uwrmaxsat_timeout:g} seconds"
-                )
-                if verbose:
-                    print(f"[MaxSAT/UWrMaxSAT] {message}")
+            # UWrMaxSAT reports scalar WCNF costs through lines:
+            #
+            #     o <cost>
+            #
+            # For a single-tier objective such as bg_d2 this scalar cost is
+            # directly the objective/best_value, so it can safely be streamed to
+            # the outer controller as an incumbent.
+            stream_incumbents = (
+                incumbent_callback is not None
+                and len(self.artifacts.objective_tiers) == 1
+            )
 
-                partial_output = "\n".join(
-                    part
-                    for part in (
-                        _subprocess_text(exc.stdout),
-                        _subprocess_text(exc.stderr),
+            # Preserve old behaviour when no callback is requested, or when the
+            # objective has multiple tiers and scalar WCNF cost cannot safely be
+            # interpreted as the primary objective.
+            if not stream_incumbents:
+                try:
+                    completed = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.uwrmaxsat_timeout,
+                        check=False,
+                        start_new_session=(os.name != "nt"),
                     )
-                    if part
-                )
-                _, partial_cost, partial_model = _parse_uwrmaxsat_output(
-                    partial_output
-                )
-                partial_assignment: list[int] | None = None
-                partial_stats: B2BSolutionStats | None = None
-                partial_checks: list[str] = []
-                if partial_model and partial_cost is not None:
-                    (
+
+                except subprocess.TimeoutExpired as exc:
+                    message = (
+                        "UWrMaxSAT timed out after "
+                        f"{self.uwrmaxsat_timeout:g} seconds"
+                    )
+
+                    if verbose:
+                        print(f"[MaxSAT/UWrMaxSAT] {message}")
+
+                    partial_output = "\n".join(
+                        part
+                        for part in (
+                            _subprocess_text(exc.stdout),
+                            _subprocess_text(exc.stderr),
+                        )
+                        if part
+                    )
+
+                    _, partial_cost, partial_model = _parse_uwrmaxsat_output(
+                        partial_output
+                    )
+
+                    partial_assignment: list[int] | None = None
+                    partial_stats: B2BSolutionStats | None = None
+                    partial_checks: list[str] = []
+
+                    if partial_model and partial_cost is not None:
+                        (
+                            partial_assignment,
+                            partial_stats,
+                            partial_checks,
+                        ) = self._validate_model(
+                            partial_model,
+                            partial_cost,
+                        )
+
+                    if partial_cost is not None:
+                        message += f"; best returned cost={partial_cost}"
+
+                    return self._pack_result(
+                        "TIMEOUT",
                         partial_assignment,
                         partial_stats,
                         partial_checks,
-                    ) = self._validate_model(partial_model, partial_cost)
-                if partial_cost is not None:
-                    message += f"; best returned cost={partial_cost}"
-                return self._pack_result(
-                    "TIMEOUT",
-                    partial_assignment,
-                    partial_stats,
-                    partial_checks,
-                    solver_cost=partial_cost,
-                    solver_backend="UWrMaxSAT",
-                    solver_message=message,
-                    solver_command=shlex.join(command),
+                        solver_cost=partial_cost,
+                        solver_backend="UWrMaxSAT",
+                        solver_message=message,
+                        solver_command=shlex.join(command),
+                    )
+
+                except OSError as exc:
+                    message = f"cannot execute UWrMaxSAT: {exc}"
+
+                    return self._pack_result(
+                        "ERROR",
+                        None,
+                        None,
+                        solver_backend="UWrMaxSAT",
+                        solver_message=message,
+                        solver_command=shlex.join(command),
+                    )
+
+            else:
+                # -------------------------------------------------------------
+                # Streaming mode used by CE/controller.
+                #
+                # stdout is consumed continuously. Every improving "o <cost>"
+                # line is immediately sent to incumbent_callback(), which sends
+                # it through the multiprocessing queue to the controller.
+                #
+                # Therefore, even when Main.run_with_timeout() later kills this
+                # worker at the global deadline, the controller has already
+                # retained the latest/best incumbent.
+                # -------------------------------------------------------------
+
+                output_lines: list[str] = []
+                streamed_best_cost: int | None = None
+
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        start_new_session=(os.name != "nt"),
+                    )
+
+                except OSError as exc:
+                    message = f"cannot execute UWrMaxSAT: {exc}"
+
+                    return self._pack_result(
+                        "ERROR",
+                        None,
+                        None,
+                        solver_backend="UWrMaxSAT",
+                        solver_message=message,
+                        solver_command=shlex.join(command),
+                    )
+
+                def consume_output() -> None:
+                    nonlocal streamed_best_cost
+
+                    if process.stdout is None:
+                        return
+
+                    try:
+                        for raw_line in process.stdout:
+                            # Keep full output so the normal parser can still
+                            # reconstruct status/cost/model when the process ends.
+                            output_lines.append(raw_line)
+
+                            line = raw_line.strip()
+
+                            if not line.startswith("o "):
+                                continue
+
+                            try:
+                                candidate = int(line[2:].strip())
+                            except ValueError:
+                                continue
+
+                            # Minimization: smaller cost = better incumbent.
+                            if (
+                                streamed_best_cost is None
+                                or candidate < streamed_best_cost
+                            ):
+                                streamed_best_cost = candidate
+
+                                try:
+                                    incumbent_callback(candidate)
+                                except Exception:
+                                    # Reporting an incumbent is auxiliary.
+                                    # Never stop draining the solver's stdout just
+                                    # because the controller callback failed.
+                                    pass
+
+                    except (OSError, ValueError):
+                        # During timeout/controller termination the pipe may be
+                        # closed while the reader thread is still draining.
+                        pass
+
+                reader = threading.Thread(
+                    target=consume_output,
+                    name="uwrmaxsat-output-reader",
+                    daemon=True,
                 )
-            except OSError as exc:
-                message = f"cannot execute UWrMaxSAT: {exc}"
-                return self._pack_result(
-                    "ERROR",
-                    None,
-                    None,
-                    solver_backend="UWrMaxSAT",
-                    solver_message=message,
-                    solver_command=shlex.join(command),
+                reader.start()
+
+                try:
+                    process.wait(
+                        timeout=self.uwrmaxsat_timeout
+                    )
+
+                except subprocess.TimeoutExpired:
+                    message = (
+                        "UWrMaxSAT timed out after "
+                        f"{self.uwrmaxsat_timeout:g} seconds"
+                    )
+
+                    if verbose:
+                        print(f"[MaxSAT/UWrMaxSAT] {message}")
+
+                    process.kill()
+                    process.wait()
+
+                    # Allow reader to consume the last bytes still in the pipe.
+                    reader.join(timeout=1.0)
+
+                    partial_output = "".join(output_lines)
+
+                    _, partial_cost, partial_model = _parse_uwrmaxsat_output(
+                        partial_output
+                    )
+
+                    # Use the best cost seen realtime. This is important if the
+                    # final captured parser result missed an earlier better line.
+                    if streamed_best_cost is not None and (
+                        partial_cost is None
+                        or streamed_best_cost < partial_cost
+                    ):
+                        partial_cost = streamed_best_cost
+
+                    partial_assignment: list[int] | None = None
+                    partial_stats: B2BSolutionStats | None = None
+                    partial_checks: list[str] = []
+
+                    if partial_model and partial_cost is not None:
+                        (
+                            partial_assignment,
+                            partial_stats,
+                            partial_checks,
+                        ) = self._validate_model(
+                            partial_model,
+                            partial_cost,
+                        )
+
+                    if partial_cost is not None:
+                        message += (
+                            f"; best returned cost={partial_cost}"
+                        )
+
+                    return self._pack_result(
+                        "TIMEOUT",
+                        partial_assignment,
+                        partial_stats,
+                        partial_checks,
+                        solver_cost=partial_cost,
+                        solver_backend="UWrMaxSAT",
+                        solver_message=message,
+                        solver_command=shlex.join(command),
+                    )
+
+                # Solver terminated normally.
+                reader.join()
+
+                completed = subprocess.CompletedProcess(
+                    args=command,
+                    returncode=process.returncode,
+                    stdout="".join(output_lines),
+                    stderr="",
                 )
+
+        # ------------------------------------------------------------------
+        # Normal result processing.
+        # Same logic as before.
+        # ------------------------------------------------------------------
 
         combined_output = "\n".join(
-            part for part in (completed.stdout, completed.stderr) if part
+            part
+            for part in (
+                completed.stdout,
+                completed.stderr,
+            )
+            if part
         )
-        raw_status, parsed_cost, sat_model = _parse_uwrmaxsat_output(combined_output)
-        normalized_status = (raw_status or "").strip().upper()
 
-        if normalized_status in {"UNSAT", "UNSATISFIABLE"}:
+        raw_status, parsed_cost, sat_model = (
+            _parse_uwrmaxsat_output(combined_output)
+        )
+
+        normalized_status = (
+            raw_status or ""
+        ).strip().upper()
+
+        if normalized_status in {
+            "UNSAT",
+            "UNSATISFIABLE",
+        }:
             return self._pack_result(
                 "UNSAT",
                 None,
@@ -584,16 +796,34 @@ class B2BMaxSATSolver:
                 solver_command=shlex.join(command),
             )
 
-        optimum_statuses = {"OPTIMUM FOUND", "OPTIMAL", "OPTIMUM"}
+        optimum_statuses = {
+            "OPTIMUM FOUND",
+            "OPTIMAL",
+            "OPTIMUM",
+        }
+
         if normalized_status not in optimum_statuses:
-            details = raw_status or "missing status line"
+            details = (
+                raw_status or "missing status line"
+            )
+
             message = (
-                f"UWrMaxSAT did not report an optimum ({details}); "
+                "UWrMaxSAT did not report an optimum "
+                f"({details}); "
                 f"exit code={completed.returncode}"
             )
-            stderr_tail = completed.stderr.strip().splitlines()
+
+            stderr_tail = (
+                completed.stderr.strip().splitlines()
+                if completed.stderr
+                else []
+            )
+
             if stderr_tail:
-                message += f"; stderr: {stderr_tail[-1]}"
+                message += (
+                    f"; stderr: {stderr_tail[-1]}"
+                )
+
             return self._pack_result(
                 "ERROR",
                 None,
@@ -603,73 +833,115 @@ class B2BMaxSATSolver:
                 solver_command=shlex.join(command),
             )
 
-        if not sat_model and self.artifacts.n_vars > 0:
+        if (
+            not sat_model
+            and self.artifacts.n_vars > 0
+        ):
             return self._pack_result(
                 "ERROR",
                 None,
                 None,
                 solver_backend="UWrMaxSAT",
-                solver_message="UWrMaxSAT reported an optimum but returned no model",
+                solver_message=(
+                    "UWrMaxSAT reported an optimum "
+                    "but returned no model"
+                ),
                 solver_command=shlex.join(command),
             )
 
         solver_cost = (
             parsed_cost
             if parsed_cost is not None
-            else self.model.encoded_objective_value(sat_model)
+            else self.model.encoded_objective_value(
+                sat_model
+            )
         )
-        assignment, stats, validation_errors = self._validate_model(
-            sat_model,
-            solver_cost,
+
+        assignment, stats, validation_errors = (
+            self._validate_model(
+                sat_model,
+                solver_cost,
+            )
         )
 
         solver_messages: list[str] = [
             f"process exit code={completed.returncode}"
         ]
 
-        # Exit code chỉ là cảnh báo quy trình, không phải lỗi của nghiệm.
+        # Exit code is only a process warning if UWr has already explicitly
+        # reported OPTIMUM FOUND.
         if completed.returncode not in {0, 30}:
             solver_messages.append(
-                "UWrMaxSAT reported OPTIMUM FOUND with an unexpected process "
-                f"exit code {completed.returncode}"
+                "UWrMaxSAT reported OPTIMUM FOUND "
+                "with an unexpected process exit code "
+                f"{completed.returncode}"
             )
 
         if verbose:
             print(
                 "[MaxSAT/UWrMaxSAT] optimum vector="
-                f"{stats.objective_vector} (cost={solver_cost})"
+                f"{stats.objective_vector} "
+                f"(cost={solver_cost})"
             )
 
             print(
                 "[MaxSAT/UWrMaxSAT] "
-                f"process exit code={completed.returncode}"
+                f"process exit code="
+                f"{completed.returncode}"
             )
 
             if validation_errors:
-                print("[MaxSAT/UWrMaxSAT] validation errors:")
+                print(
+                    "[MaxSAT/UWrMaxSAT] "
+                    "validation errors:"
+                )
+
                 for error in validation_errors:
                     print(f"  - {error}")
 
         return self._pack_result(
-            "OPTIMAL" if not validation_errors else "ERROR",
+            (
+                "OPTIMAL"
+                if not validation_errors
+                else "ERROR"
+            ),
             assignment,
             stats,
             validation_errors,
             solver_cost=solver_cost,
             solver_backend="UWrMaxSAT",
-            solver_message="; ".join(solver_messages),
+            solver_message="; ".join(
+                solver_messages
+            ),
             solver_command=shlex.join(command),
         )
-
-    def solve(self, verbose: bool = False) -> dict[str, Any]:
+    def solve(
+        self,
+        verbose: bool = False,
+        incumbent_callback: Callable[[int], None] | None = None,
+    ) -> dict[str, Any]:
         if self.backend == "rc2":
             return self._solve_with_rc2(verbose)
 
         binary = self.resolved_uwrmaxsat_bin
-        if binary is None:  # Guard against mutation after constructor validation.
-            raise FileNotFoundError(UWRMAXSAT_NOT_FOUND_MESSAGE)
-        return self._solve_with_uwrmaxsat(binary, verbose)
 
+        if binary is None:
+            # Guard against mutation after constructor validation.
+            raise FileNotFoundError(
+                UWRMAXSAT_NOT_FOUND_MESSAGE
+            )
+
+        if incumbent_callback is None:
+            return self._solve_with_uwrmaxsat(
+                binary,
+                verbose,
+            )
+
+        return self._solve_with_uwrmaxsat(
+            binary,
+            verbose,
+            incumbent_callback=incumbent_callback,
+        )
 
 def solve_b2b(
     instance_or_path: B2BInstance | str | Path,
