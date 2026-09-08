@@ -1,0 +1,2 @@
+instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
+ticf-13crafb.original,yes,maxsat,direct,lexicographic,19.6 2,6.0 2,22.5 2,7.2 2,4.2 2

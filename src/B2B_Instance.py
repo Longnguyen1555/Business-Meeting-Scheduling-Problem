@@ -11,12 +11,15 @@ from pysat.formula import CNF, IDPool, WCNF
 PrecedenceMode = Literal["traditional", "staircase"]
 PrecedenceEdgeMode = Literal["direct", "source-closure"]
 EncodingVariant = Literal["basic", "imp1", "imp2", "imp12", "imp12+"]
-ObjectiveMode = Literal["idle-range", "lexicographic"]
+ObjectiveMode = Literal["idle-range", "lexicographic", "lex-idlesum"]
 
 VALID_PRECEDENCE_MODES = {"traditional", "staircase"}
 VALID_PRECEDENCE_EDGE_MODES = {"direct", "source-closure"}
 VALID_ENCODING_VARIANTS = {"basic", "imp1", "imp2", "imp12", "imp12+"}
-VALID_OBJECTIVE_MODES = {"idle-range", "lexicographic"}
+# "lexicographic"  -> (IdleRange, IdleMax, IdleSum)
+# "lex-idlesum"    -> (IdleRange, IdleSum), i.e. no IdleMax level
+VALID_OBJECTIVE_MODES = {"idle-range", "lexicographic", "lex-idlesum"}
+LEXICOGRAPHIC_MODES = {"lexicographic", "lex-idlesum"}
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,15 @@ class B2BSolutionStats:
     def participant_internal_idle_slots(self) -> list[int]:
         """Internal idle-slot count B(p) for every participant."""
         return self.participant_breaks
+
+    @property
+    def max_internal_idle_slots(self) -> int:
+        """Bottleneck internal idle count max_p B(p).
+
+        Participants outside P* have B(p) = 0, so maximizing over every
+        participant agrees with maximizing over P*.
+        """
+        return max(self.participant_breaks, default=0)
 
     @property
     def idle_range(self) -> int:
@@ -737,11 +749,16 @@ class B2BSATModel:
             for participant_lits in hole_lits
             for lit in participant_lits
         ]
-        objective_name = (
-            "internal_idle_slot_range_pstar"
-            if self.objective_mode == "idle-range"
-            else "lexicographic_internal_idle_range_pstar_then_idle_sum"
-        )
+        objective_name = {
+            "idle-range": "internal_idle_slot_range_pstar",
+            "lexicographic": (
+                "lexicographic_internal_idle_range_pstar"
+                "_then_idle_max_then_idle_sum"
+            ),
+            "lex-idlesum": (
+                "lexicographic_internal_idle_range_pstar_then_idle_sum"
+            ),
+        }[self.objective_mode]
 
         self._artifacts = B2BModelArtifacts(
             cnf=cnf,
@@ -1181,6 +1198,85 @@ class B2BSATModel:
         artifacts = self.build_base_cnf()
         positives = {lit for lit in sat_model if lit > 0}
         return sum(1 for lit in artifacts.objective_lits if lit in positives)
+
+    def max_break_lits(self) -> list[int]:
+        """Unary literals whose true count is max_{p in P*} B(p).
+
+        With theta(p, k) <-> B(p) >= k, _add_break_slot_gap_objective already
+        asserts maxBreakSlots[k] <-> OR_{p in P*} theta(p, k). Those literals are
+        monotone in k, so maxBreakSlots is the unary representation of
+        max_p B(p) and summing it yields that maximum. Minimizing the sum of
+        this list therefore minimizes max(k such that theta(p, k) is true).
+
+        Only one literal per threshold level is needed, versus one per
+        (participant, level) pair for ``secondary_objective_lits``.
+        """
+        artifacts = self.build_base_cnf()
+        sorted_lits = artifacts.sorted_hole_lits_by_participant
+        global_upper = max(
+            (len(sorted_lits[p]) for p in artifacts.objective_participants),
+            default=0,
+        )
+        return [self.max_break(k) for k in range(1, global_upper + 1)]
+
+    def min_break_lits(self) -> list[int]:
+        """Unary literals whose true count is min_{p in P*} B(p).
+
+        The mirror of ``max_break_lits``: _add_break_slot_gap_objective asserts
+        minBreakSlots[k] <-> AND_{p in P*} theta(p, k), so summing this list
+        yields min_p B(p).
+
+        Useful as a derived bound in phase 3. Once IdleRange and IdleMax are
+        pinned to their proven optima R* and M*, IdleRange = IdleMax - IdleMin
+        forces IdleMin = M* - R* exactly, so bounding this sum adds no solutions
+        but gives the solver a directly propagating constraint.
+        """
+        artifacts = self.build_base_cnf()
+        sorted_lits = artifacts.sorted_hole_lits_by_participant
+        global_upper = max(
+            (len(sorted_lits[p]) for p in artifacts.objective_participants),
+            default=0,
+        )
+        return [self.min_break(k) for k in range(1, global_upper + 1)]
+
+    def encoded_idle_min(self, sat_model: list[int]) -> int:
+        """Return min_p B(p) encoded by the minBreakSlots literals."""
+        positives = {lit for lit in sat_model if lit > 0}
+        return sum(1 for lit in self.min_break_lits() if lit in positives)
+
+    def encoded_idle_max(self, sat_model: list[int]) -> int:
+        """Return max_p B(p) encoded by the maxBreakSlots literals."""
+        positives = {lit for lit in sat_model if lit > 0}
+        return sum(1 for lit in self.max_break_lits() if lit in positives)
+
+    def secondary_max_consistency_errors(
+        self,
+        sat_model: list[int],
+        stats: B2BSolutionStats,
+        *,
+        imposed_bound: int | None = None,
+        solver_cost: int | None = None,
+    ) -> list[str]:
+        """Cross-check the encoded IdleMax against the decoded schedule."""
+        encoded = self.encoded_idle_max(sat_model)
+        expected = stats.max_internal_idle_slots
+        errors: list[str] = []
+        if encoded != expected:
+            errors.append(
+                "secondary objective encoding mismatch: "
+                f"encoded IdleMax={encoded}, schedule IdleMax={expected}"
+            )
+        if imposed_bound is not None and encoded > imposed_bound:
+            errors.append(
+                "secondary objective-bound violation: "
+                f"encoded IdleMax={encoded}, imposed bound={imposed_bound}"
+            )
+        if solver_cost is not None and solver_cost != encoded:
+            errors.append(
+                "secondary solver-cost mismatch: "
+                f"solver cost={solver_cost}, encoded IdleMax={encoded}"
+            )
+        return errors
 
     def encoded_idle_sum(self, sat_model: list[int]) -> int:
         """Return IdleSum encoded by the secondary objective literals."""

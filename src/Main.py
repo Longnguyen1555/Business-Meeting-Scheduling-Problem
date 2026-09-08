@@ -49,6 +49,7 @@ PRECEDENCE_EDGE_MODES = [
 OBJECTIVE_MODES = [
     "idle-range",
     "lexicographic",
+    "lex-idlesum",
 ]
 
 MEMORY_SAMPLE_INTERVAL_S = 0.05
@@ -102,10 +103,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--objective-mode",
         choices=[*OBJECTIVE_MODES, "both"],
-        default="idle-range",
+        default="lexicographic",
         help=(
-            "Optimize IdleRange(P*) only, or lexicographically optimize "
-            "(IdleRange(P*), IdleSum)."
+            "idle-range: IdleRange(P*) only. lexicographic: "
+            "(IdleRange, IdleMax, IdleSum). lex-idlesum: (IdleRange, IdleSum), "
+            "dropping the IdleMax level."
         ),
     )
 
@@ -463,8 +465,11 @@ def _build_worker_payload(
         "runtime_s": round(runtime_s, 6),
         "objective": result.get("objective"),
         "objective_mode": result.get("objective_mode", objective_mode),
+        "objective_value": result.get("objective_value"),
         "secondary_objective_value": result.get("secondary_objective_value"),
         "secondary_proven_optimum": result.get("secondary_proven_optimum"),
+        "tertiary_objective_value": result.get("tertiary_objective_value"),
+        "tertiary_proven_optimum": result.get("tertiary_proven_optimum"),
         "total_breaks": None if stats is None else stats.total_breaks,
         "fairness_gap": None if stats is None else stats.fairness_gap,
         "idle_range": None if stats is None else stats.idle_range,
@@ -593,11 +598,13 @@ def _worker(
             "objective": (
                 "internal_idle_slot_range_pstar"
                 if objective_mode == "idle-range"
-                else "lexicographic_internal_idle_range_pstar_then_idle_sum"
+                else "lexicographic_internal_idle_range_pstar_then_idle_max"
             ),
             "objective_mode": objective_mode,
             "secondary_objective_value": None,
             "secondary_proven_optimum": None,
+            "tertiary_objective_value": None,
+            "tertiary_proven_optimum": None,
             "total_breaks": None,
             "fairness_gap": None,
             "idle_range": None,
@@ -699,6 +706,8 @@ def _base_terminal_payload(
         "objective_mode": objective_mode,
         "secondary_objective_value": None,
         "secondary_proven_optimum": None,
+        "tertiary_objective_value": None,
+        "tertiary_proven_optimum": None,
         "total_breaks": None,
         "fairness_gap": None,
         "idle_range": None,
@@ -943,6 +952,8 @@ def write_detailed_csv(path: Path, results: list[dict[str, Any]]) -> None:
         "objective_mode",
         "secondary_objective_value",
         "secondary_proven_optimum",
+        "tertiary_objective_value",
+        "tertiary_proven_optimum",
         "objective_participant_count",
         "objective_participants",
         "total_breaks",
@@ -1074,6 +1085,11 @@ def main() -> None:
                                 f"clauses={_format_number(result.get('n_total_clauses'))} | "
                                 f"memory={_format_memory(result.get('peak_memory_mb'))} | "
                                 f"IdleRange(P*)={result.get('idle_range')} | "
+                                # The optimized tie-breaker. IdleSum is only an
+                                # incidental property of the returned schedule
+                                # unless the solver actually minimizes it, so it
+                                # may differ between equally optimal runs.
+                                f"Secondary={result.get('secondary_objective_value')} | "
                                 f"IdleSum={result.get('total_breaks')}"
                             )
 

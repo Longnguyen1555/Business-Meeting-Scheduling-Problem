@@ -1,2 +1,13 @@
 *.pyc
+__pycache__/
 /venv
+
+# Per-unit sweep output: thousands of small CSVs that scripts/sweep.py writes as
+# it goes. They are intermediate state -- the merged results in output/ are the
+# deliverable, and a sweep can always be re-run to regenerate them.
+/src/sweep_out*/
+/src/sweep_bak_maxsat/
+
+# Snapshots taken before the instance-set deduplication.
+/data_backup_predup/
+/output/csv_backup_predup/
