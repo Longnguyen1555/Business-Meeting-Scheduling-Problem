@@ -1,5 +1,8 @@
 # B2B SAT/MaxSAT journal objective framework
 
+For the current **1,638-run All-126 first repetition**, see
+[the T1–T3 run instructions](#first-all-126-journal-campaign-t1t3).
+
 This repository implements the conference formulation and the journal
 objective extension of the Business-to-Business Meeting Scheduling Problem.
 The backward-compatible default objective is
@@ -22,12 +25,45 @@ The shared Boolean model additionally supports:
 | `ir` | minimize `IdleRange(P*)` (conference default) |
 | `bg_d2` | minimize total break groups subject to hard `BreakGroupRange <= 2` |
 | `ir_is` | lexicographically minimize `(IdleRange(P*), total internal idle slots)` |
+| `ir_im_is` | lexicographically minimize `(IdleRange(P*), maximum participant idle, total internal idle slots)` |
 | `bg_ir_is` | lexicographically minimize `(total break groups, IdleRange(P*), total internal idle slots)` |
+| `is` | minimize total internal idle slots |
+| `isq` | minimize the sum of squared participant idle counts (MaxSAT only) |
+| `im_is` | lexicographically minimize `(maximum participant idle, total internal idle slots)` |
 
-`MaxSAT_Solver.py` uses exact dominating weights. `Multiple_SAT.py` and
-`IncrementalSAT_Solver.py` optimize tiers sequentially; the latter retains one
+`MaxSAT_Solver.py` uses exact dominating weights and weighted ISQ penalties.
+`Multiple_SAT.py` and `IncrementalSAT_Solver.py` optimize supported unweighted
+tiers sequentially; ISQ is rejected. The latter retains one
 solver and its learned clauses across tiers. Commercial MIP/CP adapters still
 support only `ir`, and the CLI rejects other modes for those solvers.
+
+The objective encoder also exposes an independent compactness factor through
+`--compact-encoding`:
+
+| Preset | Refinement | Effective scope |
+|---|---|---|
+| `reference` | unchanged exact reference encoding | all engines/modes |
+| `certified_bg` | A: replace BG-d2 range by per-participant `AtMost(2)` when an input certificate proves a zero-break participant | BG-d2; exact general fallback otherwise |
+| `shared_counter` | B: one bidirectional dynamic-programming counter for all break-group thresholds | modes that retain break-group thresholds |
+| `demand_driven` | C: build only consumed prefix/suffix states and reuse exact singleton/unchanged literals | all modes |
+| `direct_range_soft` | D: penalize each idle-range level by `not qmax or qmin` without a range-difference variable | MaxSAT idle-range modes only |
+| `optimized` | compatible A+B+C+D bundle | MaxSAT; D is inactive when no idle range is used |
+
+The default remains `reference`, so previous commands and configuration IDs
+are stable. The runner records the selected preset, effective feature list,
+certificate participant/reason, selected certified/fallback branch, alias
+counts, shared-counter states, and direct range soft-clause count. It rejects
+D instead of silently translating its non-unit soft clauses into an invalid
+SAT cardinality tier.
+
+Participant-collision AMO is a separate factor.  The default
+`--collision-amo pairwise` preserves previous formulas and configuration IDs.
+`--collision-amo adaptive_commander` keeps pairwise AMO for groups of at most
+five literals and uses group-size-four commander AMO from six literals onward.
+The cutoff is fixed by the exact clause-count crossover, not tuned per
+instance.  Detailed rows record the selected AMO, group counts, commander
+variables, AMO clauses, and maximum group size.  Combine it with
+`--compact-encoding optimized` for the implemented A+B+C+D+F model.
 
 ## Main components
 
@@ -163,6 +199,20 @@ python3 src/Main.py \
   --maxsat-backend rc2 \
   --timeout 120 \
   --csv output/journal_ir_is_smoke.csv
+```
+
+Run every effective compact preset for a MaxSAT objective ablation:
+
+```bash
+python3 src/Main.py \
+  --instance data_table03_origin/tic-12.original.dzn \
+  --solver maxsat \
+  --maxsat-backend rc2 \
+  --objective-mode ir_is \
+  --compact-encoding all \
+  --domain-mode reduced \
+  --timeout 120 \
+  --csv output/compact_ir_is_smoke.csv
 ```
 
 Use pinned UWrMaxSAT instead of RC2 for production. Every detailed row records
@@ -424,10 +474,10 @@ python3 src/Normalize_Official_Run.py \
 
 ## Configuration identity
 
-Every row stores eight factors separately: M (domain), F (domain-filter graph),
+Every row stores nine factors separately: M (domain), F (domain-filter graph),
 P (precedence encoding), G (CNF precedence graph), B (`SpanThreshold`), O
 (`IdleRangePstar`, `BreakGroupsD2`, or a lexicographic mode), S (optimization
-engine), and I (implied package). Existing
+engine), I (implied package), and C (compact-objective encoding). Existing
 Filter-E* labels and `cfg2` machine IDs remain unchanged so completed results
 remain reusable. A new Filter-E label such as
 `R-FE-SS-DC-ST-IRP-UW-IC12P` and its `cfg4` machine ID explicitly record
@@ -476,7 +526,8 @@ explicit end-to-end value and its components are retained instead of silently
 equating the two definitions.
 
 Formula size fields describe the shared base CNF. MaxSAT's
-`n_total_clauses` additionally includes the unit soft objective clauses. SAT
+`n_total_clauses` additionally includes the soft objective clauses (unit in the
+reference encoding and possibly binary for direct range penalties). SAT
 optimizer-specific bound/totalizer variables, clauses, and literals are kept in
 separate `optimizer_added_*` fields, together with solver-call and bound-encoding
 counts. SAT incumbents are sent to the controller during optimization, so a hard
@@ -530,6 +581,10 @@ The frozen confirmatory matrices are:
 | `official_core.json` | E1--E3, All-126, five repetitions | 8,820 |
 | `precedence_ablation.json` | E4, 140 precedence contents, three repetitions | 3,360 |
 | `generated_core.json` | E5, Generated-300, three repetitions | 4,500 |
+| `compact_smoke.json` | pinned A--D gate, 12 contents | 168 |
+| `compact_ablation.json` | paired A--D ablations, All-126, three repetitions | 5,292 |
+| `compact_f_smoke.json` | optimized A--D versus A--D+F gate, 12 contents | 72 |
+| `compact_f_ablation.json` | paired F ablation, All-126, three repetitions | 2,268 |
 
 On the GCP VM, preserve the conference Python environment and solver binary.
 Production configs enforce the recorded conference profile: Intel Xeon Platinum
@@ -550,6 +605,8 @@ scripts/run_journal_gcp.sh plan
 scripts/run_journal_gcp.sh coverage
 scripts/run_journal_gcp.sh correctness
 scripts/run_journal_gcp.sh smoke
+scripts/run_journal_gcp.sh compact-smoke
+scripts/run_journal_gcp.sh compact-f-smoke
 scripts/run_journal_gcp.sh pilot
 ```
 
@@ -560,6 +617,8 @@ frozen. The pilot does not tune the precommitted 7,200-second cutoff. Afterwards
 ```bash
 scripts/run_journal_gcp.sh official
 scripts/run_journal_gcp.sh precedence
+scripts/run_journal_gcp.sh compact
+scripts/run_journal_gcp.sh compact-f
 scripts/run_journal_gcp.sh generated-development
 
 # Open held-out data exactly once after all tuning decisions are frozen.
@@ -591,7 +650,9 @@ python3 src/B2B_Instance.py \
   --precedence-graph distance_closure \
   --encoding-variant imp12+ \
   --domain-mode full \
-  --objective-mode ir_is
+  --objective-mode ir_is \
+  --compact-encoding optimized \
+  --collision-amo adaptive_commander
 ```
 
 ## Test
@@ -605,3 +666,65 @@ The exact-model unit tests exercise the shared MIP coefficient matrix, sparse
 occupancy variables, zero-based idle identity, CP global-constraint
 specification, configuration expansion, and no-fallback behavior without
 requiring a commercial license.
+## First All-126 journal campaign (T1–T3)
+
+The current journal matrix has **13 configurations per canonical input**:
+7 BG-d2 fidelity/ablation cells, 4 waiting-objective cells (IR-IS, IS, ISQ,
+IM-IS), and 2 additional IM-IS ablations. The IM-IS C+F cell is reused from
+the quality block. Repetition 1 contains **1,638 jobs**, not 4,914.
+
+From this repository root:
+
+```bash
+# Plan only; works locally without the GCP environment or UWrMaxSAT binary.
+bash scripts/run_journal_gcp.sh all126-first-plan
+
+# On GCP, using the existing journal_gcp.env pins and conference environment:
+bash scripts/run_journal_gcp.sh all126-first-smoke
+bash scripts/run_journal_gcp.sh all126-first
+```
+
+The smoke gate is 156 development jobs at 300 s; production is 1,638 jobs
+at 7,200 s each. Production preserves the conference CPU/RAM/no-swap profile,
+one worker, one solver thread, and seed 0. Warm-up is separate from those counts.
+The new commands do not require Generated-300 or launch the older broad campaigns.
+Review and commit the source/configuration changes before copying the same
+clean commit to GCP. Keep `ALLOW_DIRTY=0` for production and use the pinned
+`UWRMAXSAT_BIN` and `UWRMAXSAT_SHA256` in `journal_gcp.env`.
+
+Default output: `outputs/journal/all126-first/`, containing `plan.json`,
+`environment.json`, append-only `raw/results.jsonl`, normalized CSV and logs.
+Run `all126-first` again after an interruption: completed terminal jobs are
+skipped and unfinished jobs are resumed under the same plan/environment.
+Do not change the manifest, code commit or solver binary mid-campaign.
+`RETRY_ERRORS=1` retries ERROR records; TIMEOUT is a completed observation.
+
+```bash
+bash scripts/run_journal_gcp.sh validate outputs/journal/all126-first
+```
+
+`--objective-mode is` minimizes total internal idle, `isq` minimizes its sum
+of squares, and `im_is` lexicographically minimizes maximum then total idle.
+`--objective-mode ir_im_is` minimizes idle range first, maximum individual
+idle second, and total idle third. Its exact one-shot MaxSAT weights are
+`((U_max + 1)(U_sum + 1), U_sum + 1, 1)`, so every higher-priority unit
+strictly dominates all possible lower-tier costs. It is available for a
+focused sensitivity study but is intentionally not inserted into the frozen
+1,638-job first-repetition matrix. A development run is, for example:
+
+```bash
+python3 src/Main.py --solver maxsat --objective-mode ir_im_is \
+  --compact-encoding optimized --collision-amo adaptive_commander \
+  --domain-mode reduced --maxsat-backend rc2 \
+  --instance data_table03_origin/forum-13.original.dzn --no-excel
+```
+
+ISQ uses odd threshold weights (1,3,5,...), not duplicated unit literals;
+it is MaxSAT-only. IM-IS uses exact maximum thresholds with dominating weight
+`U_sum + 1` and one weighted-MaxSAT call, including all setup and optimization
+in the common timeout. Its optional SAT implementation uses maximum-threshold
+tiers; direct-cap SAT and threshold-free E are not part of this campaign.
+Results include maximum idle, squared idle, coefficient bit lengths and full
+objective vectors. RC2 is an explicit development backend, never a production
+fallback. Three repetitions would total 4,914 jobs but are not launched by
+`all126-first`.

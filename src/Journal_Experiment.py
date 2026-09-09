@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from Dataset_Manifest import file_sha256
+from B2B_Instance import (
+    VALID_COLLISION_AMO_ENCODINGS,
+    VALID_COMPACT_ENCODINGS,
+)
 from Main import InstanceSpec, collect_instances, write_detailed_csv
 from MaxSAT_Solver import executable_sha256, resolve_uwrmaxsat_binary
 
@@ -304,9 +308,37 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
             "ir",
             "bg_d2",
             "ir_is",
+            "ir_im_is",
             "bg_ir_is",
+            "is",
+            "isq",
+            "im_is",
         }:
             raise ValueError(f"invalid objective mode in {config_id!r}")
+        compact_encoding = configuration.get("compact_encoding", "reference")
+        if compact_encoding not in VALID_COMPACT_ENCODINGS:
+            raise ValueError(
+                f"invalid compact encoding in {config_id!r}: "
+                f"{compact_encoding!r}"
+            )
+        if (
+            solver in {"multiple", "incremental"}
+            and configuration["objective_mode"]
+            in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}
+            and compact_encoding in {"direct_range_soft", "optimized"}
+        ):
+            raise ValueError(
+                f"{compact_encoding!r} is MaxSAT-only for "
+                f"{configuration['objective_mode']!r} in {config_id!r}"
+            )
+        if configuration["objective_mode"] == "isq" and solver != "maxsat":
+            raise ValueError("ISQ requires MaxSAT weighted penalties")
+        collision_amo = configuration.get("collision_amo", "pairwise")
+        if collision_amo not in VALID_COLLISION_AMO_ENCODINGS:
+            raise ValueError(
+                f"invalid collision AMO in {config_id!r}: "
+                f"{collision_amo!r}"
+            )
         for field in (
             "domain_mode",
             "precedence_encoding",
@@ -445,6 +477,9 @@ def build_plan(
                     )
     if not jobs:
         raise ValueError("the selected block filter produced no jobs")
+    expected_jobs = config.get("expected_job_count")
+    if not only_blocks and expected_jobs is not None and len(jobs) != int(expected_jobs):
+        raise ValueError(f"frozen campaign expects {expected_jobs} jobs, got {len(jobs)}")
     payload = {
         "schema_version": SCHEMA_VERSION,
         "campaign_id": config["campaign_name"],
@@ -608,6 +643,10 @@ def _configuration_command(
             configuration["solver"],
             "--objective-mode",
             configuration["objective_mode"],
+            "--compact-encoding",
+            configuration.get("compact_encoding", "reference"),
+            "--collision-amo",
+            configuration.get("collision_amo", "pairwise"),
             "--domain-mode",
             configuration["domain_mode"],
             "--domain-filter-graph",

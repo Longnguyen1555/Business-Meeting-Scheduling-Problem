@@ -56,6 +56,72 @@ def _objective_vector(row: dict[str, Any]) -> tuple[int, ...] | None:
     return tuple(int(value.strip()) for value in str(raw).split(",") if value.strip())
 
 
+def waiting_metric_errors(row: dict[str, Any]) -> list[str]:
+    """Check the new objective vector against the recorded participant costs."""
+    try:
+        raw = row["participant_internal_idle_slots"]
+        values = [
+            int(value)
+            for value in (
+                raw if isinstance(raw, (tuple, list)) else str(raw).split(",")
+            )
+        ]
+        if not values or any(v < 0 for v in values):
+            return ["missing or invalid participant idle costs"]
+        total, maximum, squared = sum(values), max(values), sum(v * v for v in values)
+        objective_mode = row["objective_mode"]
+        if objective_mode == "ir_im_is":
+            participants_raw = row["objective_participants"]
+            participants = [
+                int(value)
+                for value in (
+                    participants_raw
+                    if isinstance(participants_raw, (tuple, list))
+                    else str(participants_raw).split(",")
+                )
+                if str(value).strip()
+            ]
+            if any(participant < 1 or participant > len(values) for participant in participants):
+                return ["invalid objective participant IDs"]
+            pstar_values = [values[participant - 1] for participant in participants]
+            idle_range = (
+                max(pstar_values) - min(pstar_values)
+                if len(pstar_values) >= 2
+                else 0
+            )
+            maximum = max(pstar_values, default=0)
+            expected = (idle_range, maximum, total)
+        else:
+            expected = {
+                "is": (total,),
+                "isq": (squared,),
+                "im_is": (maximum, total),
+            }[objective_mode]
+        errors = []
+        for field, value in (("total_internal_idle_slots", total),
+                             ("maximum_internal_idle_slots", maximum),
+                             ("squared_internal_idle_slots", squared)):
+            if int(row[field]) != value:
+                errors.append(f"{field} disagrees with participant costs")
+        if objective_mode == "ir_im_is" and int(row["idle_range_pstar"]) != idle_range:
+            errors.append("idle_range_pstar disagrees with objective-participant costs")
+        if _objective_vector(row) != expected:
+            errors.append("waiting objective vector disagrees with participant costs")
+        proven = _objective_vector({"objective_vector": row.get("proven_objective_vector")})
+        if proven != expected:
+            errors.append("proven waiting objective vector is missing or inconsistent")
+        weights_raw = row["objective_tier_weights"]
+        weights = [int(v) for v in (weights_raw if isinstance(weights_raw, (list, tuple))
+                                   else str(weights_raw).split(","))]
+        if len(weights) != len(expected) or any(v <= 0 for v in weights):
+            errors.append("invalid objective tier weights")
+        elif int(row["lexicographic_scalar_cost"]) != sum(w * v for w, v in zip(weights, expected)):
+            errors.append("weighted solver cost disagrees with waiting objective")
+        return errors
+    except (ValueError, KeyError, TypeError):
+        return ["missing or malformed waiting metrics/cost certificate"]
+
+
 def validate_campaign(
     output_dir: Path,
     *,
@@ -179,6 +245,49 @@ def validate_campaign(
         expected_mode = job["configuration"].get("objective_mode", "")
         if str(row.get("objective_mode", "")) != str(expected_mode):
             errors.append(f"{run_key}: objective_mode mismatch")
+        is_shared_boolean_model = (
+            job["configuration"].get("executor") == "main"
+        )
+        expected_compact = job["configuration"].get(
+            "compact_encoding", "reference"
+        )
+        if is_shared_boolean_model and str(
+            row.get("compact_encoding", "")
+        ) != str(expected_compact):
+            errors.append(f"{run_key}: compact_encoding mismatch")
+        expected_collision_amo = job["configuration"].get(
+            "collision_amo", "pairwise"
+        )
+        observed_collision_amo = row.get("collision_amo", "")
+        if (
+            _is_blank(observed_collision_amo)
+            and "collision_amo" not in job["configuration"]
+        ):
+            observed_collision_amo = "pairwise"
+        if is_shared_boolean_model and str(
+            observed_collision_amo
+        ) != str(expected_collision_amo):
+            errors.append(f"{run_key}: collision_amo mismatch")
+        if (
+            is_shared_boolean_model
+            and expected_collision_amo == "adaptive_commander"
+            and not _is_blank(row.get("collision_amo_max_group_size"))
+            and int(float(row["collision_amo_max_group_size"])) >= 6
+            and int(float(row.get("collision_amo_commander_group_count") or 0))
+            <= 0
+        ):
+            errors.append(
+                f"{run_key}: adaptive commander selected but no group encoded"
+            )
+        if is_shared_boolean_model and expected_mode == "bg_d2" and expected_compact in {
+            "certified_bg",
+            "optimized",
+        }:
+            branch = str(row.get("zero_break_branch", ""))
+            if branch not in {"certified", "general_fallback"}:
+                errors.append(
+                    f"{run_key}: missing certified/fallback BG-d2 branch"
+                )
         for field, requirement in (
             ("threads", required_machine.get("threads_per_run")),
             ("random_seed", required_machine.get("random_seed")),
@@ -206,6 +315,8 @@ def validate_campaign(
                 errors.append(f"{run_key}: OPTIMAL row has validation errors")
             if _truthy(row.get("runtime_censored")):
                 errors.append(f"{run_key}: OPTIMAL row is marked censored")
+        if expected_mode in {"is", "isq", "im_is", "ir_im_is"} and status == "OPTIMAL":
+            errors.extend(f"{run_key}: {error}" for error in waiting_metric_errors(row))
         if status == "TIMEOUT" and not _truthy(row.get("runtime_censored")):
             errors.append(f"{run_key}: TIMEOUT row is not marked censored")
         row_uwr_hash = str(row.get("solver_binary_sha256", ""))
@@ -283,7 +394,8 @@ def validate_campaign(
         ir_statuses = {
             row.get("status")
             for row in group_rows
-            if row.get("objective_mode") == "ir"
+            if row.get("objective_mode")
+            in {"ir", "ir_is", "ir_im_is", "is", "isq", "im_is"}
             and row.get("status") in {"OPTIMAL", "UNSAT"}
         }
         bg_statuses = {

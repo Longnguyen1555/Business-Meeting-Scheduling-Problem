@@ -19,6 +19,8 @@ class JournalScheduleMetrics:
     objective_mode: str
     objective_vector: tuple[int, ...]
     historical_fairness_cap_satisfied: bool
+    maximum_internal_idle_slots: int
+    squared_internal_idle_slots: int
 
 
 def _occupied_slots(
@@ -89,7 +91,11 @@ def evaluate_journal_schedule(
         "ir": (idle_range,),
         "bg_d2": (group_sum,),
         "ir_is": (idle_range, idle_sum),
+        "ir_im_is": (idle_range, max(pstar_values, default=0), idle_sum),
         "bg_ir_is": (group_sum, idle_range, idle_sum),
+        "is": (idle_sum,),
+        "isq": (sum(value ** 2 for value in pstar_values),),
+        "im_is": (max(pstar_values, default=0), idle_sum),
     }
     return JournalScheduleMetrics(
         participant_internal_idle_slots=participant_idle,
@@ -101,6 +107,8 @@ def evaluate_journal_schedule(
         objective_mode=objective_mode,
         objective_vector=vectors[objective_mode],
         historical_fairness_cap_satisfied=group_range <= 2,
+        maximum_internal_idle_slots=max(pstar_values, default=0),
+        squared_internal_idle_slots=sum(value ** 2 for value in pstar_values),
     )
 
 

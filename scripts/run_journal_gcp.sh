@@ -5,6 +5,23 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_DIR"
 
+# Planning is read-only with respect to solver state and needs no GCP pins.
+if [[ "${1:-}" == "all126-first-plan" ]]; then
+  plan_env_file=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
+  if [[ -f "$plan_env_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$plan_env_file"
+  fi
+  plan_python=${PLAN_PYTHON:-python3}
+  if [[ -z "${PLAN_PYTHON:-}" && -x "${JOURNAL_VENV:-.venv-ubuntu}/bin/python" ]]; then
+    plan_python="${JOURNAL_VENV:-.venv-ubuntu}/bin/python"
+  fi
+  exec "$plan_python" src/Journal_Experiment.py \
+    --config journal_configs/all126_first.json \
+    --output-dir "${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/all126-first" \
+    --plan-only
+fi
+
 ENV_FILE=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: copy journal_gcp.env.example to $ENV_FILE and fill the pins" >&2
@@ -209,6 +226,19 @@ case "$command" in
   smoke)
     run_campaign production_smoke production-smoke
     ;;
+  compact-smoke)
+    run_campaign compact_smoke compact-smoke
+    ;;
+  compact-f-smoke)
+    run_campaign compact_f_smoke compact-f-smoke
+    ;;
+  all126-first-smoke)
+    run_campaign all126_first_smoke all126-first-smoke
+    ;;
+  all126-first)
+    run_warmup
+    run_campaign all126_first all126-first
+    ;;
   pilot)
     require_generated_data
     run_warmup
@@ -221,6 +251,14 @@ case "$command" in
   precedence)
     run_warmup
     run_campaign precedence_ablation precedence-ablation
+    ;;
+  compact)
+    run_warmup
+    run_campaign compact_ablation compact-ablation
+    ;;
+  compact-f)
+    run_warmup
+    run_campaign compact_f_ablation compact-f-ablation
     ;;
   generated-development)
     require_generated_data
@@ -244,6 +282,10 @@ case "$command" in
     plan_campaign pilot stratified-pilot
     plan_campaign official_core official-core
     plan_campaign precedence_ablation precedence-ablation
+    plan_campaign compact_smoke compact-smoke
+    plan_campaign compact_ablation compact-ablation
+    plan_campaign compact_f_smoke compact-f-smoke
+    plan_campaign compact_f_ablation compact-f-ablation
     plan_campaign generated_core generated-development \
       --only-block e5_generated_development
     plan_campaign generated_core generated-heldout \
@@ -277,9 +319,16 @@ Commands:
   coverage               extract features and audit marginal/joint coverage
   correctness             local RC2/CaDiCaL 12-content gate
   smoke                   pinned production solver 12-content gate
+  compact-smoke           pinned A-D compact gate (168 runs)
+  compact-f-smoke         pinned optimized-vs-F gate (72 runs)
+  all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
+  all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
+  all126-first            T1-T3 All-126, repetition 1 only (1,638 runs)
   pilot                   7,200-second development-only stratified pilot
   official                E1-E3 All-126 (8,820 runs)
   precedence              E4 2x2x2 ablation (3,360 runs)
+  compact                 paired A-D All-126 ablation (5,292 runs)
+  compact-f               paired F All-126 ablation (2,268 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES
   plan                    create and report all deterministic plans

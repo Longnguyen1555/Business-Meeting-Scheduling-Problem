@@ -167,6 +167,8 @@ class B2BMaxSATSolver:
         precedence_graph: str | None = None,
         domain_filter_graph: str = "distance_closure",
         objective_mode: str = "ir",
+        compact_encoding: str = "reference",
+        collision_amo_encoding: str = "pairwise",
         backend: MaxSATBackend | str | None = None,
         uwrmaxsat_bin: str | Path | None = None,
         uwrmaxsat_sha256: str | None = None,
@@ -261,6 +263,8 @@ class B2BMaxSATSolver:
             domain_mode=domain_mode,
             domain_filter_graph=domain_filter_graph,
             objective_mode=objective_mode,
+            compact_encoding=compact_encoding,
+            collision_amo_encoding=collision_amo_encoding,
         )
         self.artifacts = self.model.build_base_cnf()
 
@@ -322,6 +326,49 @@ class B2BMaxSATSolver:
             "domain_filter_graph": self.artifacts.domain_filter_graph,
             "objective": self.artifacts.objective_name,
             "objective_mode": self.artifacts.objective_mode,
+            "compact_encoding": self.artifacts.compact_encoding,
+            "compact_encoding_features": (
+                self.artifacts.compact_encoding_features
+            ),
+            "zero_break_certificate_participant": (
+                None
+                if self.artifacts.zero_break_certificate_participant is None
+                else self.artifacts.zero_break_certificate_participant + 1
+            ),
+            "zero_break_certificate_reason": (
+                self.artifacts.zero_break_certificate_reason
+            ),
+            "zero_break_branch": self.artifacts.zero_break_branch,
+            "occupancy_alias_count": self.artifacts.occupancy_alias_count,
+            "prefix_alias_count": self.artifacts.prefix_alias_count,
+            "suffix_alias_count": self.artifacts.suffix_alias_count,
+            "first_alias_count": self.artifacts.first_alias_count,
+            "shared_counter_state_count": (
+                self.artifacts.shared_counter_state_count
+            ),
+            "direct_range_soft_clause_count": (
+                self.artifacts.direct_range_soft_clause_count
+            ),
+            "collision_amo_encoding": self.artifacts.collision_amo_encoding,
+            "collision_amo_cutoff": self.artifacts.collision_amo_cutoff,
+            "collision_amo_commander_group_size": (
+                self.artifacts.collision_amo_commander_group_size
+            ),
+            "collision_amo_pairwise_group_count": (
+                self.artifacts.collision_amo_pairwise_group_count
+            ),
+            "collision_amo_commander_group_count": (
+                self.artifacts.collision_amo_commander_group_count
+            ),
+            "collision_amo_commander_variable_count": (
+                self.artifacts.collision_amo_commander_variable_count
+            ),
+            "collision_amo_clause_count": (
+                self.artifacts.collision_amo_clause_count
+            ),
+            "collision_amo_max_group_size": (
+                self.artifacts.collision_amo_max_group_size
+            ),
             "objective_participant_count": len(
                 self.artifacts.objective_participants
             ),
@@ -372,13 +419,16 @@ class B2BMaxSATSolver:
             "n_clauses": self.artifacts.n_clauses,
             "n_hard_clauses": self.artifacts.n_clauses,
             "n_soft": sum(
-                len(tier.literals) for tier in self.artifacts.objective_tiers
+                len(tier.maxsat_clauses)
+                for tier in self.artifacts.objective_tiers
             ),
             "n_soft_clauses": sum(
-                len(tier.literals) for tier in self.artifacts.objective_tiers
+                len(tier.maxsat_clauses)
+                for tier in self.artifacts.objective_tiers
             ),
             "n_objective_lits": sum(
-                len(tier.literals) for tier in self.artifacts.objective_tiers
+                len(tier.maxsat_clauses)
+                for tier in self.artifacts.objective_tiers
             ),
             "full_schedule_candidates": (
                 self.artifacts.full_schedule_candidates
@@ -682,6 +732,8 @@ def solve_b2b(
     precedence_graph: str | None = None,
     domain_filter_graph: str = "distance_closure",
     objective_mode: str = "ir",
+    compact_encoding: str = "reference",
+    collision_amo_encoding: str = "pairwise",
     backend: MaxSATBackend | str | None = None,
     uwrmaxsat_bin: str | Path | None = None,
     uwrmaxsat_sha256: str | None = None,
@@ -696,6 +748,8 @@ def solve_b2b(
         domain_mode=domain_mode,
         domain_filter_graph=domain_filter_graph,
         objective_mode=objective_mode,
+        compact_encoding=compact_encoding,
+        collision_amo_encoding=collision_amo_encoding,
         backend=backend,
         uwrmaxsat_bin=uwrmaxsat_bin,
         uwrmaxsat_sha256=uwrmaxsat_sha256,

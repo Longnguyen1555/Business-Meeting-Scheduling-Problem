@@ -24,7 +24,12 @@ except ImportError:  # Memory remains optional for benchmark portability.
     psutil = None
 
 from IncrementalSAT_Solver import B2BIncrementalSATSolver
-from B2B_Instance import VALID_OBJECTIVE_MODES, read_instance
+from B2B_Instance import (
+    VALID_COLLISION_AMO_ENCODINGS,
+    VALID_COMPACT_ENCODINGS,
+    VALID_OBJECTIVE_MODES,
+    read_instance,
+)
 from CPLEX_CP_Solver import B2BCPLEXCPSolver
 from CPLEX_MIP_Solver import B2BCPLEXMIPSolver
 from Dataset_Manifest import (
@@ -63,6 +68,8 @@ PRECEDENCE_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_FILTER_GRAPHS = ["direct", "distance_closure"]
 DOMAIN_MODES = ["full", "reduced"]
 OBJECTIVE_MODES = sorted(VALID_OBJECTIVE_MODES)
+COMPACT_ENCODINGS = sorted(VALID_COMPACT_ENCODINGS)
+COLLISION_AMO_ENCODINGS = sorted(VALID_COLLISION_AMO_ENCODINGS)
 MAXSAT_BACKENDS = ["uwrmaxsat", "rc2"]
 SAT_BACKENDS = ["cadical", "glucose"]
 SAT_BACKEND_CODES = {"cadical": "CD", "glucose": "GL"}
@@ -93,19 +100,55 @@ OBJECTIVE_CODES = {
     "ir": "IRP",
     "bg_d2": "BGD2",
     "ir_is": "IRIS",
+    "ir_im_is": "IRIMIS",
     "bg_ir_is": "BGIRIS",
+    "is": "IS",
+    "isq": "ISQ",
+    "im_is": "IMIS",
 }
 OBJECTIVE_NAMES = {
     "ir": "IdleRangePstar",
     "bg_d2": "BreakGroupsD2",
     "ir_is": "IdleRangeThenIdleSum",
+    "ir_im_is": "IdleRangeThenMaximumIdleThenIdleSum",
     "bg_ir_is": "BreakGroupsThenIdleRangeThenIdleSum",
+    "is": "IdleSum",
+    "isq": "SquaredIdleSum",
+    "im_is": "MaximumIdleThenIdleSum",
 }
 OBJECTIVE_KEYS = {
     "ir": "idle_range_pstar",
     "bg_d2": "break_groups_d2",
     "ir_is": "idle_range_then_idle_sum",
+    "ir_im_is": "idle_range_maximum_idle_sum",
     "bg_ir_is": "break_groups_idle_range_idle_sum",
+    "is": "idle_sum",
+    "isq": "squared_idle_sum",
+    "im_is": "maximum_idle_then_idle_sum",
+}
+COMPACT_ENCODING_CODES = {
+    "reference": "REF",
+    "certified_bg": "A",
+    "demand_driven": "C",
+    "shared_counter": "B",
+    "direct_range_soft": "D",
+    "optimized": "ABCD",
+}
+COMPACT_ENCODING_NAMES = {
+    "reference": "Reference",
+    "certified_bg": "CertifiedBG",
+    "demand_driven": "DemandDriven",
+    "shared_counter": "SharedCounter",
+    "direct_range_soft": "DirectRangeSoft",
+    "optimized": "OptimizedABCD",
+}
+COLLISION_AMO_CODES = {
+    "pairwise": "PW",
+    "adaptive_commander": "AC",
+}
+COLLISION_AMO_NAMES = {
+    "pairwise": "Pairwise",
+    "adaptive_commander": "AdaptiveCommander",
 }
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = PROJECT_ROOT / "instances_manifest.csv"
@@ -235,8 +278,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=OBJECTIVE_MODES,
         default="ir",
         help=(
-            "ir preserves conference behavior; bg_d2, ir_is and bg_ir_is are "
-            "journal Boolean-objective modes"
+            "ir preserves conference behavior; bg_d2, ir_is, ir_im_is, "
+            "bg_ir_is, is, isq and im_is are journal Boolean-objective modes"
+        ),
+    )
+    parser.add_argument(
+        "--compact-encoding",
+        choices=[*COMPACT_ENCODINGS, "all"],
+        default="reference",
+        help=(
+            "objective-encoding ablation: reference, A=certified_bg, "
+            "B=shared_counter, C=demand_driven, D=direct_range_soft, "
+            "optimized=ABCD; D and optimized idle-range modes are "
+            "MaxSAT-only"
+        ),
+    )
+    parser.add_argument(
+        "--collision-amo",
+        choices=[*COLLISION_AMO_ENCODINGS, "all"],
+        default="pairwise",
+        help=(
+            "participant-collision AMO factor: pairwise preserves the "
+            "reference model; adaptive_commander uses pairwise below six "
+            "literals and group-size-four commander AMO from six onward"
         ),
     )
     parser.add_argument(
@@ -301,6 +365,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "commercial exact baselines currently support only "
             "--objective-mode ir"
         )
+    if (
+        args.solver in {*EXACT_SOLVERS, "exact_all"}
+        and args.compact_encoding not in {"reference", "all"}
+    ):
+        parser.error("commercial exact baselines have no compact-encoding factor")
+    if (
+        args.solver in {*EXACT_SOLVERS, "exact_all"}
+        and args.collision_amo not in {"pairwise", "all"}
+    ):
+        parser.error("commercial exact baselines have no collision-AMO factor")
+    if (
+        args.objective_mode in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}
+        and args.compact_encoding in {"direct_range_soft", "optimized"}
+        and args.solver in {"incremental", "multiple"}
+    ):
+        parser.error(
+            f"--compact-encoding {args.compact_encoding} is MaxSAT-only for "
+            f"--objective-mode {args.objective_mode}"
+        )
+    if args.objective_mode == "isq" and args.solver != "maxsat":
+        parser.error("--objective-mode isq requires --solver maxsat (weighted penalties)")
     return args
 
 
@@ -327,6 +412,8 @@ class RunConfiguration:
     encoding_variant: str
     domain_mode: str
     objective_mode: str = "ir"
+    compact_encoding: str = "reference"
+    collision_amo: str = "pairwise"
 
 
 def precedence_configurations(args: argparse.Namespace) -> list[tuple[str, str]]:
@@ -384,10 +471,24 @@ def configuration_metadata(
     sat_backend: str,
     domain_filter_graph: str = "distance_closure",
     objective_mode: str = "ir",
+    compact_encoding: str = "reference",
+    collision_amo: str = "pairwise",
 ) -> dict[str, str]:
     """Return stable human and machine identifiers for one factor tuple."""
 
+    if compact_encoding not in VALID_COMPACT_ENCODINGS:
+        raise ValueError(f"Unknown compact_encoding={compact_encoding!r}")
+    if collision_amo not in VALID_COLLISION_AMO_ENCODINGS:
+        raise ValueError(f"Unknown collision_amo={collision_amo!r}")
     if solver_name in EXACT_SOLVERS:
+        if compact_encoding != "reference":
+            raise ValueError(
+                f"{solver_name} has no compact_encoding={compact_encoding!r}"
+            )
+        if collision_amo != "pairwise":
+            raise ValueError(
+                f"{solver_name} has no collision_amo={collision_amo!r}"
+            )
         if objective_mode != "ir":
             raise ValueError(
                 f"{solver_name} does not implement objective_mode="
@@ -444,6 +545,8 @@ def configuration_metadata(
             "idle_encoding": idle_encoding,
             "domain_filter_graph": "distance_closure",
             "objective_code": "IRP",
+            "compact_encoding": "reference",
+            "collision_amo": "pairwise",
             "implied_constraints_code": "NA",
             "factor_m": "Reduced",
             "factor_f": "Filter-E*",
@@ -457,6 +560,8 @@ def configuration_metadata(
             "factor_o": "IdleRangePstar",
             "factor_s": optimization_engine,
             "factor_i": "N/A",
+            "factor_c": "Reference",
+            "factor_amo": "Pairwise",
         }
 
     if solver_name == "maxsat":
@@ -496,6 +601,10 @@ def configuration_metadata(
         )
     )
     label = "-".join(label_parts)
+    if compact_encoding != "reference":
+        label = f"{label}-C{COMPACT_ENCODING_CODES[compact_encoding]}"
+    if collision_amo != "pairwise":
+        label = f"{label}-FAMO{COLLISION_AMO_CODES[collision_amo]}"
     optimization_procedure_display_name = {
         "maxsat": "one-shot weighted MaxSAT",
         "multiple": "restart-based multi-phase SAT",
@@ -525,6 +634,10 @@ def configuration_metadata(
             f"backend-{backend_code.lower()}",
         )
     )
+    if compact_encoding != "reference":
+        identifier_parts.append(f"c-{compact_encoding}")
+    if collision_amo != "pairwise":
+        identifier_parts.append(f"amo-{collision_amo}")
     identifier = "__".join(identifier_parts)
     return {
         "configuration_label": label,
@@ -542,6 +655,8 @@ def configuration_metadata(
         "idle_encoding": "span_threshold",
         "domain_filter_graph": domain_filter_graph,
         "objective_code": OBJECTIVE_CODES[objective_mode],
+        "compact_encoding": compact_encoding,
+        "collision_amo": collision_amo,
         "implied_constraints_code": implied_code,
         "factor_m": "Full" if domain_mode == "full" else "Reduced",
         "factor_f": (
@@ -563,6 +678,8 @@ def configuration_metadata(
         "factor_o": OBJECTIVE_NAMES[objective_mode],
         "factor_s": optimization_engine,
         "factor_i": VARIANT_FACTOR_NAMES[encoding_variant],
+        "factor_c": COMPACT_ENCODING_NAMES[compact_encoding],
+        "factor_amo": COLLISION_AMO_NAMES[collision_amo],
     }
 
 
@@ -714,6 +831,48 @@ def instance_domain_filter_configurations(
     )
 
 
+def solver_compact_configurations(
+    args: argparse.Namespace,
+    solver_name: str,
+) -> list[str]:
+    """Return non-duplicating, backend-compatible compact ablation cells."""
+
+    if solver_name in EXACT_SOLVERS:
+        return ["reference"]
+    candidates = selected(args.compact_encoding, COMPACT_ENCODINGS)
+    if args.objective_mode == "bg_d2":
+        # D is an idle-range MaxSAT refinement and has no effect on BG-d2.
+        return [value for value in candidates if value != "direct_range_soft"]
+    if solver_name != "maxsat" and args.objective_mode in {
+        "ir",
+        "ir_is",
+        "ir_im_is",
+        "bg_ir_is",
+    }:
+        # These presets activate non-unit soft clauses for idle range, which
+        # the cardinality-bound SAT procedures intentionally do not consume.
+        return [
+            value
+            for value in candidates
+            if value not in {"direct_range_soft", "optimized"}
+        ]
+    return candidates
+
+
+def solver_collision_amo_configurations(
+    args: argparse.Namespace,
+    solver_name: str,
+) -> list[str]:
+    """Return collision-AMO cells supported by the selected formulation."""
+
+    if solver_name in EXACT_SOLVERS:
+        return ["pairwise"]
+    return selected(
+        getattr(args, "collision_amo", "pairwise"),
+        COLLISION_AMO_ENCODINGS,
+    )
+
+
 def benchmark_configurations(
     args: argparse.Namespace,
     instance: InstanceSpec,
@@ -738,6 +897,8 @@ def benchmark_configurations(
                 encoding_variant=variant,
                 domain_mode=domain_mode,
                 objective_mode=args.objective_mode,
+                compact_encoding=compact_encoding,
+                collision_amo=collision_amo,
             )
             for domain_mode in domain_modes
             for domain_filter_graph in instance_domain_filter_configurations(
@@ -747,6 +908,8 @@ def benchmark_configurations(
             )
             for precedence_encoding, precedence_graph in precedence_cells
             for solver in selected_sat_solvers
+            for compact_encoding in solver_compact_configurations(args, solver)
+            for collision_amo in solver_collision_amo_configurations(args, solver)
             for variant in variants
         )
 
@@ -764,6 +927,8 @@ def benchmark_configurations(
                 encoding_variant="n/a",
                 domain_mode="reduced",
                 objective_mode="ir",
+                compact_encoding="reference",
+                collision_amo="pairwise",
             )
         )
     return configurations
@@ -1022,12 +1187,22 @@ def _formula_metadata(
         }
 
     objective_literal_count = sum(
-        len(tier.literals) for tier in artifacts.objective_tiers
+        len(tier.maxsat_clauses) for tier in artifacts.objective_tiers
     )
-    n_soft = objective_literal_count if solver_name == "maxsat" else 0
+    soft_clauses = (
+        [
+            clause
+            for tier in artifacts.objective_tiers
+            for clause in tier.maxsat_clauses
+        ]
+        if solver_name == "maxsat"
+        else []
+    )
+    n_soft = len(soft_clauses)
+    n_soft_literals = sum(len(clause) for clause in soft_clauses)
     soft_weight_sum = (
         sum(
-            len(tier.literals) * tier.scalar_weight
+            sum(tier.maxsat_weights) * tier.scalar_weight
             for tier in artifacts.objective_tiers
         )
         if solver_name == "maxsat"
@@ -1037,6 +1212,45 @@ def _formula_metadata(
         "message_type": "metadata",
         "objective": artifacts.objective_name,
         "objective_mode": artifacts.objective_mode,
+        "compact_encoding": artifacts.compact_encoding,
+        "compact_encoding_features": serialize_list(
+            artifacts.compact_encoding_features
+        ),
+        "zero_break_certificate_participant": (
+            None
+            if artifacts.zero_break_certificate_participant is None
+            else artifacts.zero_break_certificate_participant + 1
+        ),
+        "zero_break_certificate_reason": (
+            artifacts.zero_break_certificate_reason
+        ),
+        "zero_break_branch": artifacts.zero_break_branch,
+        "occupancy_alias_count": artifacts.occupancy_alias_count,
+        "prefix_alias_count": artifacts.prefix_alias_count,
+        "suffix_alias_count": artifacts.suffix_alias_count,
+        "first_alias_count": artifacts.first_alias_count,
+        "shared_counter_state_count": artifacts.shared_counter_state_count,
+        "direct_range_soft_clause_count": (
+            artifacts.direct_range_soft_clause_count
+        ),
+        "collision_amo": artifacts.collision_amo_encoding,
+        "collision_amo_cutoff": artifacts.collision_amo_cutoff,
+        "collision_amo_commander_group_size": (
+            artifacts.collision_amo_commander_group_size
+        ),
+        "collision_amo_pairwise_group_count": (
+            artifacts.collision_amo_pairwise_group_count
+        ),
+        "collision_amo_commander_group_count": (
+            artifacts.collision_amo_commander_group_count
+        ),
+        "collision_amo_commander_variable_count": (
+            artifacts.collision_amo_commander_variable_count
+        ),
+        "collision_amo_clause_count": artifacts.collision_amo_clause_count,
+        "collision_amo_max_group_size": (
+            artifacts.collision_amo_max_group_size
+        ),
         "objective_tier_weights": serialize_list(
             tuple(tier.scalar_weight for tier in artifacts.objective_tiers)
         ),
@@ -1074,10 +1288,13 @@ def _formula_metadata(
         "n_soft_clauses": n_soft,
         "n_total_clauses": artifacts.n_clauses + n_soft,
         "n_hard_literals": artifacts.n_hard_literals,
-        "n_soft_literals": n_soft,
-        "n_total_literals": artifacts.n_hard_literals + n_soft,
+        "n_soft_literals": n_soft_literals,
+        "n_total_literals": artifacts.n_hard_literals + n_soft_literals,
         "max_hard_clause_length": artifacts.max_hard_clause_length,
-        "max_soft_clause_length": 1 if n_soft else 0,
+        "max_soft_clause_length": max(
+            (len(clause) for clause in soft_clauses),
+            default=0,
+        ),
         "n_unit_hard_clauses": artifacts.n_unit_hard_clauses,
         "n_binary_hard_clauses": artifacts.n_binary_hard_clauses,
         "n_ternary_hard_clauses": artifacts.n_ternary_hard_clauses,
@@ -1085,8 +1302,14 @@ def _formula_metadata(
         "soft_clause_weight": (
             artifacts.objective_tiers[0].scalar_weight
             if n_soft and len(artifacts.objective_tiers) == 1
+            and not artifacts.objective_tiers[0].penalty_weights
             else None
         ),
+        "max_soft_weight_bits": max(
+            (int(tier.scalar_weight * weight).bit_length()
+             for tier in artifacts.objective_tiers for weight in tier.maxsat_weights),
+            default=0,
+        ) if solver_name == "maxsat" else 0,
         "soft_weight_sum": soft_weight_sum,
         "formula_scope": FORMULA_SCOPE,
         "input_parsing_seconds": round(input_parsing_seconds, 6),
@@ -1171,6 +1394,50 @@ def _result_payload(
         "formulation_name": result.get("formulation_name"),
         "objective": result.get("objective", "internal_idle_slot_range_pstar"),
         "objective_mode": result.get("objective_mode", "ir"),
+        "compact_encoding": result.get("compact_encoding", "reference"),
+        "compact_encoding_features": serialize_list(
+            result.get("compact_encoding_features")
+        ),
+        "zero_break_certificate_participant": result.get(
+            "zero_break_certificate_participant"
+        ),
+        "zero_break_certificate_reason": result.get(
+            "zero_break_certificate_reason", ""
+        ),
+        "zero_break_branch": result.get("zero_break_branch", "not_applicable"),
+        "occupancy_alias_count": result.get("occupancy_alias_count", 0),
+        "prefix_alias_count": result.get("prefix_alias_count", 0),
+        "suffix_alias_count": result.get("suffix_alias_count", 0),
+        "first_alias_count": result.get("first_alias_count", 0),
+        "shared_counter_state_count": result.get(
+            "shared_counter_state_count", 0
+        ),
+        "direct_range_soft_clause_count": result.get(
+            "direct_range_soft_clause_count", 0
+        ),
+        "collision_amo": result.get(
+            "collision_amo_encoding",
+            result.get("collision_amo", "pairwise"),
+        ),
+        "collision_amo_cutoff": result.get("collision_amo_cutoff", 6),
+        "collision_amo_commander_group_size": result.get(
+            "collision_amo_commander_group_size", 4
+        ),
+        "collision_amo_pairwise_group_count": result.get(
+            "collision_amo_pairwise_group_count", 0
+        ),
+        "collision_amo_commander_group_count": result.get(
+            "collision_amo_commander_group_count", 0
+        ),
+        "collision_amo_commander_variable_count": result.get(
+            "collision_amo_commander_variable_count", 0
+        ),
+        "collision_amo_clause_count": result.get(
+            "collision_amo_clause_count", 0
+        ),
+        "collision_amo_max_group_size": result.get(
+            "collision_amo_max_group_size", 0
+        ),
         "objective_vector": serialize_list(result.get("objective_vector")),
         "objective_value": result.get("objective_value"),
         "best_value": result.get("objective_value"),
@@ -1199,6 +1466,12 @@ def _result_payload(
         ),
         "total_internal_idle_slots": (
             None if stats is None else stats.total_internal_idle_slots
+        ),
+        "maximum_internal_idle_slots": (
+            None if stats is None else stats.maximum_internal_idle_slots
+        ),
+        "squared_internal_idle_slots": (
+            None if stats is None else stats.squared_internal_idle_slots
         ),
         "total_break_groups": (
             None if stats is None else stats.total_break_groups
@@ -1266,6 +1539,8 @@ def _worker(
     encoding_variant: str,
     domain_mode: str,
     objective_mode: str,
+    compact_encoding: str,
+    collision_amo: str,
     maxsat_backend: str,
     uwrmaxsat_bin: str | None,
     uwrmaxsat_sha256: str | None,
@@ -1297,6 +1572,8 @@ def _worker(
                 "domain_mode": domain_mode,
                 "domain_filter_graph": domain_filter_graph,
                 "objective_mode": objective_mode,
+                "compact_encoding": compact_encoding,
+                "collision_amo_encoding": collision_amo,
             }
         if solver_name == "maxsat":
             solver_kwargs.update(
@@ -1390,6 +1667,8 @@ def _worker(
                 "encoding_variant": encoding_variant,
                 "domain_mode": domain_mode,
                 "objective_mode": objective_mode,
+                "compact_encoding": compact_encoding,
+                "collision_amo": collision_amo,
                 "runtime_seconds": round(time.perf_counter() - started, 6),
                 "runtime_scope": RUNTIME_SCOPE,
                 "runtime_censored": False,
@@ -1514,6 +1793,8 @@ def _terminal_payload(
     sat_backend: str,
     runtime_seconds: float,
     objective_mode: str,
+    compact_encoding: str,
+    collision_amo: str,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -1531,6 +1812,8 @@ def _terminal_payload(
         "encoding_variant": encoding_variant,
         "domain_mode": domain_mode,
         "objective_mode": objective_mode,
+        "compact_encoding": compact_encoding,
+        "collision_amo": collision_amo,
         "runtime_seconds": round(runtime_seconds, 6),
         "runtime_scope": (
             "configured wall-clock cutoff measured by the controller; "
@@ -1571,6 +1854,8 @@ def run_with_timeout(
     threads: int = 1,
     random_seed: int = 0,
     objective_mode: str = "ir",
+    compact_encoding: str = "reference",
+    collision_amo: str = "pairwise",
 ) -> dict[str, Any]:
     context = mp.get_context("spawn")
     output: mp.Queue[Any] = context.Queue()
@@ -1585,6 +1870,8 @@ def run_with_timeout(
             encoding_variant,
             domain_mode,
             objective_mode,
+            compact_encoding,
+            collision_amo,
             maxsat_backend,
             uwrmaxsat_bin,
             uwrmaxsat_sha256,
@@ -1633,6 +1920,8 @@ def run_with_timeout(
             sat_backend=sat_backend,
             runtime_seconds=time.perf_counter() - started,
             objective_mode=objective_mode,
+            compact_encoding=compact_encoding,
+            collision_amo=collision_amo,
         )
     else:
         process.join()
@@ -1654,6 +1943,8 @@ def run_with_timeout(
                 sat_backend=sat_backend,
                 runtime_seconds=time.perf_counter() - started,
                 objective_mode=objective_mode,
+                compact_encoding=compact_encoding,
+                collision_amo=collision_amo,
             )
             result["error_type"] = "NoWorkerPayload"
             result["error_message"] = "Worker returned no result"
@@ -1693,6 +1984,8 @@ def run_with_timeout(
             maxsat_backend=maxsat_backend,
             sat_backend=sat_backend,
             objective_mode=objective_mode,
+            compact_encoding=compact_encoding,
+            collision_amo=collision_amo,
         )
     )
     result.setdefault("formula_scope", FORMULA_SCOPE)
@@ -1798,7 +2091,10 @@ def format_table_cell(result: dict[str, Any]) -> str:
 
 
 def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
-    grouped: dict[tuple[str, str, str, str, str, str, str], dict[str, Any]] = {}
+    grouped: dict[
+        tuple[str, str, str, str, str, str, str, str, str],
+        dict[str, Any],
+    ] = {}
     for result in results:
         key = (
             result["instance"],
@@ -1808,6 +2104,8 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             result["solver"],
             result["domain_mode"],
             result.get("objective_mode", "ir"),
+            result.get("compact_encoding", "reference"),
+            result.get("collision_amo", "pairwise"),
         )
         row = grouped.setdefault(
             key,
@@ -1823,6 +2121,10 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
                 "solver": result["solver"],
                 "objective": result.get("objective", "IdleRange(P*)"),
                 "objective_mode": result.get("objective_mode", "ir"),
+                "compact_encoding": result.get(
+                    "compact_encoding", "reference"
+                ),
+                "collision_amo": result.get("collision_amo", "pairwise"),
                 "domain_mode": result["domain_mode"],
             },
         )
@@ -1841,6 +2143,8 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
             row["precedence_graph"],
             row["solver"],
             row["objective_mode"],
+            row["compact_encoding"],
+            row["collision_amo"],
         )
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1853,6 +2157,8 @@ def write_aggregate_csv(path: Path, results: list[dict[str, Any]]) -> None:
         "solver",
         "objective",
         "objective_mode",
+        "compact_encoding",
+        "collision_amo",
         "domain_mode",
         *AGGREGATE_VARIANTS,
     ]
@@ -2002,7 +2308,9 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"B2B benchmark: {total_runs} run(s), "
-        f"objective_mode={args.objective_mode}"
+        f"objective_mode={args.objective_mode}, "
+        f"compact_encoding={args.compact_encoding}, "
+        f"collision_amo={args.collision_amo}"
     )
     print(
         f"Selected input paths: {len(instances)} "
@@ -2044,7 +2352,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"P={configuration.precedence_encoding} | "
                 f"G={configuration.precedence_graph} | "
                 f"{configuration.encoding_variant} | "
-                f"objective={configuration.objective_mode}",
+                f"objective={configuration.objective_mode} | "
+                f"compact={configuration.compact_encoding} | "
+                f"collision_amo={configuration.collision_amo}",
                 flush=True,
             )
             result = run_with_timeout(
@@ -2064,6 +2374,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.threads,
                 args.random_seed,
                 configuration.objective_mode,
+                configuration.compact_encoding,
+                configuration.collision_amo,
             )
             result = {
                 **instance_result_metadata(instance),

@@ -1,0 +1,116 @@
+{
+  "description": "Paired F ablation: frozen pairwise collision AMO versus adaptive group-size-four commander AMO on top of optimized A-D.",
+  "blocks": [
+    {
+      "id": "e_compact_f_bg_d2",
+      "datasets": ["official_all_126"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "bg_d2_optimized_abcd_pairwise_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "bg_d2_optimized_abcdf_commander_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    },
+    {
+      "id": "e_compact_f_ir_is",
+      "datasets": ["official_all_126"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "ir_is_optimized_abcd_pairwise_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "ir_is_optimized_abcdf_commander_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    },
+    {
+      "id": "e_compact_f_bg_ir_is_exploratory",
+      "datasets": ["official_all_126"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "bg_ir_is_optimized_abcd_pairwise_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_ir_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "bg_ir_is_optimized_abcdf_commander_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_ir_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}
