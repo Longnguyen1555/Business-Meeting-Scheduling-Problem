@@ -1,42 +1,55 @@
 - Dataset: 126 distinct instances across table03/06/07/08 (duplicates removed),
 of which 89 are not UNSAT and were run under the IdleSum objectives.
+(table03: 20, table06: 10, table07: 29, table08: 30)
 - Each instance contributes 2 rows (traditional + staircase) => 178 rows per file.
 - Encoding variant imp12+, 3 parallel workers.
 - Timeout: 3600s
+- Source: output/<solver>_lex3_vm.csv and output/<solver>_sum_vm.csv
 
-- Solved instances for _lex3 and _sum:
-IncrementalSAT   168 → 168   (no change)
+- Solved rows for _lex3_vm and _sum_vm (out of 178):
+IncrementalSAT   164 → 161   (lost 4, gained 1)
 MaxSAT           158 → 158   (no change)
-MultipleSAT      156 → 157   (lost 2, gained 3)
+MultipleSAT      166 → 167   (lost 0, gained 1)
 
 
 - Total runtime for both staircase and traditional:
-solver           solved     TO      _lex3        _sum        diff    change
-IncrementalSAT   168/178  10/10   61166.6s    57177.5s    -3989.1s    -6.5%
-MaxSAT           158/178  20/20   79327.4s    80024.2s     +696.8s    +0.9%
-MultipleSAT      154/178  22/21  107719.7s   107955.9s     +236.2s    +0.2%
+solver             solved       TO      _lex3        _sum        diff    change
+IncrementalSAT   164→161/178  14/17   63935.5s    66429.0s    +2493.5s    +3.9%
+MaxSAT           158→158/178  20/20   78143.0s    80267.3s    +2124.2s    +2.7%
+MultipleSAT      166→167/178  12/11   54713.3s    55523.6s     +810.3s    +1.5%
 
 
 - Total runtime for staircase only:
-solver           solved     TO      _lex3        _sum        diff    change
-IncrementalSAT    84/89    5/89   30887.3s    27881.0s    -3006.2s    -9.7%
-MaxSAT            79/89   10/89   39133.6s    39923.5s     +789.9s    +2.0%
-MultipleSAT       77/89   11/89   53796.6s    53668.8s     -127.8s    -0.2%
+solver             solved       TO      _lex3        _sum        diff    change
+IncrementalSAT    82→81/89     7/8    32186.3s    32776.2s     +589.9s    +1.8%
+MaxSAT            79→79/89    10/10   38772.6s    39870.1s    +1097.4s    +2.8%
+MultipleSAT       83→84/89     6/5    27556.0s    27304.4s     -251.6s    -0.9%
 
 
 - Total runtime for traditional only:
-solver           solved     TO      _lex3        _sum        diff    change
-IncrementalSAT    84/89    5/89   30279.4s    29296.5s     -982.9s    -3.2%
-MaxSAT            79/89   10/89   40193.8s    40100.7s      -93.1s    -0.2%
-MultipleSAT       77/89   11/89   53923.1s    54287.0s     +364.0s    +0.7%
+solver             solved       TO      _lex3        _sum        diff    change
+IncrementalSAT    82→80/89     7/9    31749.2s    33652.8s    +1903.6s    +6.0%
+MaxSAT            79→79/89    10/10   39370.4s    40397.2s    +1026.8s    +2.6%
+MultipleSAT       83→83/89     6/6    27157.4s    28219.2s    +1061.9s    +3.9%
 
-
+- Test solved, _lex3_vm:
 solver          mode          table03   table06   table07   table08     total
-IncrementalSAT  staircase       19/20      8/10     27/29     30/30     84/89
-IncrementalSAT  traditional     19/20      8/10     27/29     30/30     84/89
+IncrementalSAT  staircase       18/20      8/10     27/29     29/30     82/89
+IncrementalSAT  traditional     17/20      8/10     27/29     30/30     82/89
 
 MaxSAT          staircase       17/20      8/10     25/29     29/30     79/89
 MaxSAT          traditional     17/20      8/10     25/29     29/30     79/89
 
-MultipleSAT     staircase       18/20      8/10     23/29     30/30     79/89
-MultipleSAT     traditional     18/20      8/10     23/29     29/30     78/89
+MultipleSAT     staircase       18/20      8/10     27/29     30/30     83/89
+MultipleSAT     traditional     18/20      8/10     27/29     30/30     83/89
+
+- Test solved, _sum_vm:
+solver          mode          table03   table06   table07   table08     total
+IncrementalSAT  staircase       17/20      8/10     27/29     29/30     81/89
+IncrementalSAT  traditional     17/20      8/10     27/29     28/30     80/89
+
+MaxSAT          staircase       17/20      8/10     25/29     29/30     79/89
+MaxSAT          traditional     17/20      8/10     25/29     29/30     79/89
+
+MultipleSAT     staircase       18/20      8/10     28/29     30/30     84/89
+MultipleSAT     traditional     18/20      8/10     27/29     30/30     83/89
