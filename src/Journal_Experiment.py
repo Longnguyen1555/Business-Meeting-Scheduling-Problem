@@ -37,6 +37,7 @@ SCHEMA_VERSION = 1
 TERMINAL_STATUSES = {"OPTIMAL", "UNSAT", "TIMEOUT"}
 SUPPORTED_EXECUTORS = {"main", "org_bg_d2", "org_ir"}
 SUPPORTED_BOOLEAN_SOLVERS = {"maxsat", "multiple", "incremental"}
+EXECUTION_SHARD_POLICY = "content_rank_round_robin_v1"
 
 
 class CampaignInterrupted(Exception):
@@ -496,6 +497,27 @@ def build_plan(
     return payload
 
 
+def execution_shard_assignments(
+    plan: dict[str, Any],
+    shard_count: int,
+) -> dict[str, int]:
+    """Assign all configurations of one content to the same balanced shard."""
+
+    if shard_count <= 0:
+        raise ValueError("shard_count must be positive")
+    content_ids = sorted(
+        {str(job["instance_content_id"]) for job in plan["jobs"]}
+    )
+    content_shards = {
+        content_id: rank % shard_count
+        for rank, content_id in enumerate(content_ids)
+    }
+    return {
+        job["run_key"]: content_shards[str(job["instance_content_id"])]
+        for job in plan["jobs"]
+    }
+
+
 def _git_metadata() -> tuple[str, bool]:
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -523,6 +545,8 @@ def build_environment(
     *,
     uwrmaxsat_binary: Path | None,
     command: list[str],
+    execution_shard_count: int = 1,
+    execution_shard_indices: tuple[int, ...] = (0,),
 ) -> dict[str, Any]:
     commit, dirty = _git_metadata()
     manifest_hashes = {}
@@ -556,6 +580,9 @@ def build_environment(
             if uwrmaxsat_binary is not None
             else ""
         ),
+        "execution_shard_count": execution_shard_count,
+        "execution_shard_indices": list(execution_shard_indices),
+        "execution_shard_policy": EXECUTION_SHARD_POLICY,
         "runner_command": shlex.join(command),
     }
     environment.update(current_machine_profile())
@@ -916,9 +943,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--max-runs", type=int)
     parser.add_argument("--only-block", action="append", default=[])
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        help=(
+            "number of deterministic execution shards; the full plan and its "
+            "SHA-256 remain unchanged"
+        ),
+    )
+    parser.add_argument(
+        "--shard-index",
+        type=int,
+        action="append",
+        default=[],
+        help=(
+            "zero-based shard assigned to this output; repeat this option to "
+            "give one VM several shards"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.max_runs is not None and args.max_runs <= 0:
         parser.error("--max-runs must be positive")
+    if (args.shard_count is None) != (not args.shard_index):
+        parser.error(
+            "--shard-count and at least one --shard-index are required together"
+        )
+    if args.shard_count is not None:
+        if args.shard_count <= 0:
+            parser.error("--shard-count must be positive")
+        if len(set(args.shard_index)) != len(args.shard_index):
+            parser.error("--shard-index values must be distinct")
+        if any(
+            index < 0 or index >= args.shard_count
+            for index in args.shard_index
+        ):
+            parser.error(
+                "every --shard-index must satisfy 0 <= index < shard count"
+            )
+        args.shard_index.sort()
     return args
 
 
@@ -927,12 +989,15 @@ def main(argv: list[str] | None = None) -> int:
     config_path = Path(args.config).resolve()
     output_dir = Path(args.output_dir).resolve()
     config = read_config(config_path)
+    shard_count = args.shard_count or 1
+    shard_indices = tuple(args.shard_index or [0])
     datasets = resolve_datasets(config)
     plan = build_plan(
         config,
         datasets,
         only_blocks=set(args.only_block) or None,
     )
+    shard_assignments = execution_shard_assignments(plan, shard_count)
     existing_plan_path = output_dir / "plan.json"
     if existing_plan_path.is_file():
         with existing_plan_path.open(encoding="utf-8") as stream:
@@ -948,6 +1013,14 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"campaign={plan['campaign_id']} jobs={plan['job_count']} "
         f"plan_sha256={plan['plan_sha256']}"
+    )
+    selected_job_count = sum(
+        shard_assignments[job["run_key"]] in shard_indices
+        for job in plan["jobs"]
+    )
+    print(
+        f"execution_shards={list(shard_indices)}/{shard_count} "
+        f"selected_jobs={selected_job_count} policy={EXECUTION_SHARD_POLICY}"
     )
     if args.plan_only:
         return 0
@@ -1025,6 +1098,14 @@ def main(argv: list[str] | None = None) -> int:
             resume_mismatches.append("dataset manifest SHA-256")
         if str(environment.get("uwrmaxsat_sha256", "")) != binary_sha256:
             resume_mismatches.append("UWrMaxSAT SHA-256")
+        if int(environment.get("execution_shard_count", 1)) != shard_count:
+            resume_mismatches.append("execution shard count")
+        if tuple(environment.get("execution_shard_indices", [0])) != shard_indices:
+            resume_mismatches.append("execution shard indices")
+        if environment.get(
+            "execution_shard_policy", EXECUTION_SHARD_POLICY
+        ) != EXECUTION_SHARD_POLICY:
+            resume_mismatches.append("execution shard policy")
         if resume_mismatches:
             raise SystemExit(
                 "ERROR: refusing to mix environments while resuming: "
@@ -1037,6 +1118,8 @@ def main(argv: list[str] | None = None) -> int:
             plan,
             uwrmaxsat_binary=binary,
             command=[sys.executable, str(Path(__file__).resolve()), *(argv or sys.argv[1:])],
+            execution_shard_count=shard_count,
+            execution_shard_indices=shard_indices,
         )
         environment["git_commit"] = commit
         environment["git_dirty"] = dirty
@@ -1058,11 +1141,16 @@ def main(argv: list[str] | None = None) -> int:
         if record is not None and not args.retry_errors:
             continue
         pending.append(job)
+    pending = [
+        job
+        for job in pending
+        if shard_assignments[job["run_key"]] in shard_indices
+    ]
     if args.max_runs is not None:
         pending = pending[: args.max_runs]
     print(
         f"resume_state completed={len(completed)} pending_selected={len(pending)} "
-        f"raw_attempts={len(records)}"
+        f"raw_attempts={len(records)} shards={list(shard_indices)}/{shard_count}"
     )
 
     timeout = float(plan["timeout_seconds"])
@@ -1124,6 +1212,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("campaign interrupted safely; rerun with --resume", flush=True)
             return 130
+        record["row"]["execution_shard_count"] = shard_count
+        record["row"]["execution_shard_indices"] = ",".join(
+            str(index) for index in shard_indices
+        )
+        record["row"]["execution_shard_index"] = (
+            shard_assignments[job["run_key"]]
+        )
+        record["row"]["execution_shard_policy"] = EXECUTION_SHARD_POLICY
         _append_jsonl(raw_path, record)
         latest[job["run_key"]] = record
         status = record["row"].get("status")

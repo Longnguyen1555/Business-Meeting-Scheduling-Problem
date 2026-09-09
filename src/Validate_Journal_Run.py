@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from Journal_Experiment import (
+    EXECUTION_SHARD_POLICY,
     TERMINAL_STATUSES,
     canonical_json,
+    execution_shard_assignments,
     latest_attempts,
     machine_profile_errors,
     sha256_text,
@@ -193,6 +195,12 @@ def validate_campaign(
         ):
             errors.append(f"production machine profile mismatch: {mismatch}")
     expected_uwr_hash = str(environment.get("uwrmaxsat_sha256", ""))
+    execution_shard_count = int(environment.get("execution_shard_count", 1))
+    execution_shard_indices = tuple(
+        int(value)
+        for value in environment.get("execution_shard_indices", [0])
+    )
+    shard_assignments = execution_shard_assignments(plan, execution_shard_count)
     required_machine = plan.get("required_machine", {})
     peak_memory_fraction = required_machine.get("max_peak_memory_fraction")
     system_memory_mb = environment.get("system_memory_mb")
@@ -245,6 +253,36 @@ def validate_campaign(
         expected_mode = job["configuration"].get("objective_mode", "")
         if str(row.get("objective_mode", "")) != str(expected_mode):
             errors.append(f"{run_key}: objective_mode mismatch")
+        if execution_shard_count > 1:
+            expected_shard_index = shard_assignments[run_key]
+            row_shard_indices = tuple(
+                int(value.strip())
+                for value in str(
+                    row.get("execution_shard_indices", "")
+                ).split(",")
+                if value.strip()
+            )
+            try:
+                row_shard_count = int(row.get("execution_shard_count", -1))
+                row_shard_index = int(row.get("execution_shard_index", -1))
+            except (TypeError, ValueError):
+                row_shard_count = -1
+                row_shard_index = -1
+            if row_shard_count != execution_shard_count:
+                errors.append(f"{run_key}: execution shard count mismatch")
+            if environment.get("merged_from_shards"):
+                if expected_shard_index not in row_shard_indices:
+                    errors.append(
+                        f"{run_key}: source shard assignment mismatch"
+                    )
+            elif row_shard_indices != execution_shard_indices:
+                errors.append(f"{run_key}: execution shard assignment mismatch")
+            if row_shard_index != expected_shard_index:
+                errors.append(f"{run_key}: execution shard index mismatch")
+            if row.get("execution_shard_policy") != EXECUTION_SHARD_POLICY:
+                errors.append(f"{run_key}: execution shard policy mismatch")
+            if expected_shard_index not in execution_shard_indices:
+                errors.append(f"{run_key}: result belongs to an unassigned shard")
         is_shared_boolean_model = (
             job["configuration"].get("executor") == "main"
         )

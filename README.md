@@ -684,6 +684,72 @@ bash scripts/run_journal_gcp.sh all126-first-smoke
 bash scripts/run_journal_gcp.sh all126-first
 ```
 
+### Split the frozen All-126 campaign across two GCP VMs
+
+Sharding changes only where a job runs; it does not change the 1,638-job plan,
+its plan SHA-256, timeout, seed, objective, or solver settings. The assignment
+is deterministic and content-paired: every configuration for one canonical
+instance runs on the same VM. This avoids adding a VM effect inside paired
+objective/encoding comparisons.
+
+For a VM with relatively few credits and another with substantially more, use
+four shards and allocate one versus three. Shards 2 and 3 contain 403 jobs;
+shards 0 and 1 contain 416. On the low-credit VM:
+
+| Approximate low:high credit ratio | `SHARD_COUNT` | Low VM indices/jobs | High VM indices/jobs |
+|---|---:|---:|---:|
+| 1:1 | 2 | `1` / 819 | `0` / 819 |
+| 1:2 | 3 | `2` / 546 | `0,1` / 1,092 |
+| 1:3 | 4 | `3` / 403 | `0,1,2` / 1,235 |
+
+The commands below use the recommended 1:3 allocation. On the low-credit VM:
+
+```bash
+export SHARD_COUNT=4
+export SHARD_INDICES=3
+bash scripts/run_journal_gcp.sh all126-first-plan
+bash scripts/run_journal_gcp.sh all126-first-smoke
+bash scripts/run_journal_gcp.sh all126-first
+```
+
+On the high-credit VM, from the exact same clean Git commit, environment, data
+manifest, and pinned UWrMaxSAT binary:
+
+```bash
+export SHARD_COUNT=4
+export SHARD_INDICES=0,1,2
+bash scripts/run_journal_gcp.sh all126-first-plan
+bash scripts/run_journal_gcp.sh all126-first-smoke
+bash scripts/run_journal_gcp.sh all126-first
+```
+
+The production output directories are respectively
+`outputs/journal/all126-first/shard-3-of-4` and
+`outputs/journal/all126-first/shards-0-1-2-of-4`. Repeating the same command on
+the same VM resumes only that VM's assigned shards. If the low-credit VM must
+be retired, first copy its whole, possibly incomplete shard directory to the
+other VM at the same relative location, then run the low-VM command there; the
+runner continues the unfinished shard without repeating terminal jobs.
+
+After both parts finish, copy both directories to one machine and merge into a
+new, empty destination:
+
+```bash
+bash scripts/run_journal_gcp.sh merge-shards \
+  --input collected/shard-3-of-4 \
+  --input collected/shards-0-1-2-of-4 \
+  --output outputs/journal/all126-first-merged
+
+python3 src/Validate_Journal_Run.py \
+  --output outputs/journal/all126-first-merged
+```
+
+The merge command rejects overlapping/missing shards, incomplete jobs,
+different plan or Git hashes, dirty production sources, different Python or
+solver hashes, and incompatible CPU environments. It retains the two source
+environment records and VM-separated logs before performing strict validation
+of all 1,638 run keys.
+
 The smoke gate is 156 development jobs at 300 s; production is 1,638 jobs
 at 7,200 s each. Production preserves the conference CPU/RAM/no-swap profile,
 one worker, one solver thread, and seed 0. Warm-up is separate from those counts.

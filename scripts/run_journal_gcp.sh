@@ -16,10 +16,30 @@ if [[ "${1:-}" == "all126-first-plan" ]]; then
   if [[ -z "${PLAN_PYTHON:-}" && -x "${JOURNAL_VENV:-.venv-ubuntu}/bin/python" ]]; then
     plan_python="${JOURNAL_VENV:-.venv-ubuntu}/bin/python"
   fi
+  plan_shard_args=()
+  if [[ -n "${SHARD_COUNT:-}" || -n "${SHARD_INDICES:-}" ]]; then
+    if [[ ! "${SHARD_COUNT:-}" =~ ^[1-9][0-9]*$ || -z "${SHARD_INDICES:-}" ]]; then
+      echo "ERROR: set SHARD_COUNT and comma-separated SHARD_INDICES together" >&2
+      exit 2
+    fi
+    plan_shard_args+=(--shard-count "$SHARD_COUNT")
+    IFS=',' read -r -a plan_shard_indices <<< "$SHARD_INDICES"
+    for plan_shard_index in "${plan_shard_indices[@]}"; do
+      plan_shard_args+=(--shard-index "$plan_shard_index")
+    done
+  fi
   exec "$plan_python" src/Journal_Experiment.py \
     --config journal_configs/all126_first.json \
     --output-dir "${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/all126-first" \
-    --plan-only
+    --plan-only \
+    "${plan_shard_args[@]}"
+fi
+
+# Merging completed shards is a local, solver-free operation.
+if [[ "${1:-}" == "merge-shards" ]]; then
+  shift
+  merge_python=${PLAN_PYTHON:-python3}
+  exec "$merge_python" src/Merge_Journal_Shards.py "$@"
 fi
 
 ENV_FILE=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
@@ -34,6 +54,35 @@ JOURNAL_VENV=${JOURNAL_VENV:-.venv-ubuntu}
 OUTPUT_ROOT=${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}
 ALLOW_DIRTY=${ALLOW_DIRTY:-0}
 RETRY_ERRORS=${RETRY_ERRORS:-0}
+SHARD_COUNT=${SHARD_COUNT:-}
+SHARD_INDICES=${SHARD_INDICES:-}
+
+if [[ -n "$SHARD_COUNT" || -n "$SHARD_INDICES" ]]; then
+  if [[ ! "$SHARD_COUNT" =~ ^[1-9][0-9]*$ || -z "$SHARD_INDICES" ]]; then
+    echo "ERROR: set SHARD_COUNT and comma-separated SHARD_INDICES together" >&2
+    exit 2
+  fi
+fi
+
+shard_args=()
+shard_label=""
+if [[ -n "$SHARD_COUNT" ]]; then
+  shard_args+=(--shard-count "$SHARD_COUNT")
+  IFS=',' read -r -a shard_index_values <<< "$SHARD_INDICES"
+  for shard_index in "${shard_index_values[@]}"; do
+    if [[ ! "$shard_index" =~ ^[0-9]+$ || "$shard_index" -ge "$SHARD_COUNT" ]]; then
+      echo "ERROR: invalid shard index $shard_index for SHARD_COUNT=$SHARD_COUNT" >&2
+      exit 2
+    fi
+    shard_args+=(--shard-index "$shard_index")
+  done
+  shard_suffix=${SHARD_INDICES//,/-}
+  if [[ "$SHARD_INDICES" == *,* ]]; then
+    shard_label="shards-$shard_suffix-of-$SHARD_COUNT"
+  else
+    shard_label="shard-$shard_suffix-of-$SHARD_COUNT"
+  fi
+fi
 
 if [[ ! -x "$JOURNAL_VENV/bin/python" ]]; then
   echo "ERROR: missing Python environment $JOURNAL_VENV" >&2
@@ -190,6 +239,9 @@ validate_existing() {
   if [[ "$ALLOW_DIRTY" == "1" ]]; then
     dirty_args+=(--allow-dirty)
   fi
+  if [[ -n "$SHARD_COUNT" ]]; then
+    dirty_args+=(--allow-incomplete)
+  fi
   "$PYTHON" src/Validate_Journal_Run.py \
     --output "$output_dir" "${dirty_args[@]}"
 }
@@ -233,11 +285,19 @@ case "$command" in
     run_campaign compact_f_smoke compact-f-smoke
     ;;
   all126-first-smoke)
-    run_campaign all126_first_smoke all126-first-smoke
+    smoke_output=all126-first-smoke
+    if [[ -n "$shard_label" ]]; then
+      smoke_output="$smoke_output/$shard_label"
+    fi
+    run_campaign all126_first_smoke "$smoke_output" "${shard_args[@]}"
     ;;
   all126-first)
     run_warmup
-    run_campaign all126_first all126-first
+    first_output=all126-first
+    if [[ -n "$shard_label" ]]; then
+      first_output="$first_output/$shard_label"
+    fi
+    run_campaign all126_first "$first_output" "${shard_args[@]}"
     ;;
   pilot)
     require_generated_data
@@ -324,6 +384,7 @@ Commands:
   all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
   all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
   all126-first            T1-T3 All-126, repetition 1 only (1,638 runs)
+  merge-shards ARGS       merge complete disjoint VM outputs and validate them
   pilot                   7,200-second development-only stratified pilot
   official                E1-E3 All-126 (8,820 runs)
   precedence              E4 2x2x2 ablation (3,360 runs)
@@ -337,6 +398,8 @@ Commands:
 
 Every campaign is single-worker, append-only and resumable. Re-run the same
 command after interruption; the script adds --resume automatically.
+Set SHARD_COUNT=N and SHARD_INDICES=i[,j...] to divide one unchanged plan
+between VMs. Shard indices are zero-based.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
 EOF
     ;;

@@ -16,14 +16,43 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from Journal_Experiment import (
     build_plan,
+    execution_shard_assignments,
     machine_profile_errors,
     read_config,
     resolve_datasets,
 )
+from Merge_Journal_Shards import merge_shards
 from Validate_Journal_Run import validate_campaign
 
 
 class JournalExperimentTests(unittest.TestCase):
+    def test_all126_content_shards_are_balanced_and_pair_preserving(self) -> None:
+        config = read_config(
+            PROJECT_ROOT / "journal_configs" / "all126_first.json"
+        )
+        plan = build_plan(config, resolve_datasets(config))
+        assignments = execution_shard_assignments(plan, 4)
+        counts = {shard: 0 for shard in range(4)}
+        contents: dict[str, set[int]] = {}
+        configurations: dict[tuple[int, str], int] = {}
+        for job in plan["jobs"]:
+            shard = assignments[job["run_key"]]
+            counts[shard] += 1
+            contents.setdefault(job["instance_content_id"], set()).add(shard)
+            key = (shard, job["planned_configuration_id"])
+            configurations[key] = configurations.get(key, 0) + 1
+        self.assertEqual(counts, {0: 416, 1: 416, 2: 403, 3: 403})
+        self.assertTrue(all(len(shards) == 1 for shards in contents.values()))
+        for shard, expected in ((0, 32), (1, 32), (2, 31), (3, 31)):
+            self.assertEqual(
+                {
+                    count
+                    for (observed_shard, _), count in configurations.items()
+                    if observed_shard == shard
+                },
+                {expected},
+            )
+
     def test_frozen_machine_profile_comparison(self) -> None:
         required = {
             "cpu_model_contains": "Xeon(R) Platinum 8581C",
@@ -162,6 +191,84 @@ class JournalExperimentTests(unittest.TestCase):
             )
             self.assertEqual(errors, [])
             self.assertTrue(report["valid"])
+
+    def test_two_disjoint_shards_merge_into_one_valid_campaign(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="journal_shards_") as temporary:
+            root = Path(temporary)
+            config_path = root / "config.json"
+            config = {
+                "schema_version": 1,
+                "campaign_name": "unit-two-shards",
+                "timeout_seconds": 30,
+                "controller_grace_seconds": 5,
+                "run_order_seed": 11,
+                "require_clean_worktree": False,
+                "datasets": [
+                    {
+                        "id": "two",
+                        "manifest": str(PROJECT_ROOT / "instances_manifest.csv"),
+                        "family": "original",
+                        "instance_names": [
+                            "forum-13.original",
+                            "tic-12.original",
+                        ],
+                    }
+                ],
+                "blocks": [
+                    {
+                        "id": "one_block",
+                        "datasets": ["two"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {
+                                "id": "org_bg_rc2",
+                                "executor": "org_bg_d2",
+                                "objective_mode": "bg_d2",
+                                "backend": "rc2",
+                            }
+                        ],
+                    }
+                ],
+            }
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            shard_outputs = [root / "shard-0", root / "shard-1"]
+            for shard_index, output in enumerate(shard_outputs):
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(PROJECT_ROOT / "src" / "Journal_Experiment.py"),
+                        "--config",
+                        str(config_path),
+                        "--output-dir",
+                        str(output),
+                        "--allow-dirty",
+                        "--shard-count",
+                        "2",
+                        "--shard-index",
+                        str(shard_index),
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    completed.returncode, 0, completed.stdout + completed.stderr
+                )
+            merged = root / "merged"
+            report = merge_shards(
+                shard_outputs,
+                merged,
+                allow_dirty=True,
+            )
+            self.assertTrue(report["valid"])
+            self.assertEqual(report["latest_attempts"], 2)
+            errors, _ = validate_campaign(
+                merged,
+                allow_dirty=True,
+            )
+            self.assertEqual(errors, [])
 
     def test_sigterm_leaves_active_cell_uncommitted_for_resume(self) -> None:
         with tempfile.TemporaryDirectory(prefix="journal_signal_") as temporary:
