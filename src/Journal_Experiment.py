@@ -53,17 +53,17 @@ def _boot_id() -> str:
 
 
 def _cpu_model() -> str:
-    value = platform.processor().strip()
-    if value:
-        return value
     try:
         with Path("/proc/cpuinfo").open(encoding="utf-8") as stream:
             for line in stream:
                 if line.lower().startswith("model name"):
-                    return line.split(":", 1)[1].strip()
+                    value = line.split(":", 1)[1].strip()
+                    if value:
+                        return value
     except OSError:
         pass
-    return ""
+
+    return platform.processor().strip()
 
 
 def _cpu_governor() -> str:
