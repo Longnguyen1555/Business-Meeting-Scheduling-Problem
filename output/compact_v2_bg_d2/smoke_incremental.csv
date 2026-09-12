@@ -1,0 +1,2 @@
+instance,precedence_encoding,precedence_graph,precedence_configuration,domain_filter_graph,solver,objective,objective_mode,domain_mode,model_family,capacity_mode,capacity_cardinality,bg_counter_mode,idle_sla_threshold,hybrid_suffix_density,basic,imp1,imp2,imp12,imp12+,n/a
+tic-12.original,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,incremental,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact_v2,global_cluster,seqcounter,shared_dp,,,-,-,-,-,0.1 0,-

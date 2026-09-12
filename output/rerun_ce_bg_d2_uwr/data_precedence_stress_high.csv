@@ -1,0 +1,41 @@
+instance,precedence_encoding,precedence_graph,precedence_configuration,domain_filter_graph,solver,objective,objective_mode,domain_mode,model_family,capacity_mode,capacity_cardinality,bg_counter_mode,idle_sla_threshold,hybrid_suffix_density,basic,imp1,imp2,imp12,imp12+,n/a
+forum-13.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,3253.0 7,-
+forum-13.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2660.4 10,-
+forum-13crafb.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forum-13crafb.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forum-13crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forum-13crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forum-14.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forum-14.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+forumt-14.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.3 7,-
+forumt-14.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.8 11,-
+forumt-14crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,3.8 8,-
+forumt-14crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.3 9,-
+forumt-14crafd.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.8 7,-
+forumt-14crafd.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,4.2 10,-
+forumt-14crafe.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,3.0 8,-
+forumt-14crafe.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,7.7 12,-
+tic-12.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,0.4 2,-
+tic-12.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,0.4 2,-
+tic-12crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.5 2,-
+tic-12crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.0 3,-
+tic-13.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.5 1,-
+tic-13.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.8 3,-
+tic-13crafb.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,1.4 1,-
+tic-13crafb.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,2.6 3,-
+tic-13crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,190.5 6,-
+tic-13crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,946.5 8,-
+tic-14crafa.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,7.7 0,-
+tic-14crafa.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,7.8 3,-
+tic-14crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,56.1 5,-
+tic-14crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,33.6 6,-
+tic-14crafd.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,3.2 3,-
+tic-14crafd.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,12.0 5,-
+ticf-13crafa.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,803.7 8,-
+ticf-13crafa.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+ticf-13crafb.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,790.5 17,-
+ticf-13crafb.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,total_break_groups_subject_to_range_at_most_2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,1258.9 19,-
+ticf-13crafc.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+ticf-13crafc.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+ticf-14crafa.prec50,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
+ticf-14crafa.prec60,sparse_suffix,distance_closure,sparse_suffix+distance_closure,distance_closure,maxsat,break_groups_d2,bg_d2,full,compact,,seqcounter,shared_dp,,,-,-,-,-,TO,-
