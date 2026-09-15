@@ -32,6 +32,18 @@ class ResultColumn:
 
 RESULT_COLUMNS = (
     ResultColumn("campaign_id"),
+    ResultColumn("result_origin"),
+    ResultColumn("reused_from_campaign_id"),
+    ResultColumn("reused_from_plan_sha256"),
+    ResultColumn("reused_from_run_key"),
+    ResultColumn("reused_from_experiment_block"),
+    ResultColumn("reused_from_configuration_id"),
+    ResultColumn("reused_from_repetition", "integer"),
+    ResultColumn("reused_from_run_order", "integer"),
+    ResultColumn("reused_from_run_order_seed", "integer"),
+    ResultColumn("reused_from_execution_shard_index", "integer"),
+    ResultColumn("reused_from_campaign_log"),
+    ResultColumn("reused_source_record_sha256"),
     ResultColumn("experiment_block"),
     ResultColumn("planned_configuration_id"),
     ResultColumn("repetition", "integer"),

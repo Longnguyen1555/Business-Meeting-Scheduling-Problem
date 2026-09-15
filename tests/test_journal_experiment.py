@@ -44,6 +44,26 @@ class JournalExperimentTests(unittest.TestCase):
             plans[name] = (config, plan)
 
         main_config, main_plan = plans["main_objectives.json"]
+        self.assertEqual(len(main_plan["reuse_results"]), 3)
+        reused_target_cells = {
+            (
+                rule["target_block_id"],
+                rule["target_configuration_id"],
+                rule["target_repetition"],
+            )
+            for rule in main_plan["reuse_results"]
+        }
+        reused_main_jobs = sum(
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            )
+            in reused_target_cells
+            for job in main_plan["jobs"]
+        )
+        self.assertEqual(reused_main_jobs, 378)
+        self.assertEqual(main_plan["job_count"] - reused_main_jobs, 1890)
         main_ir_im_is_caps = {
             job["planned_configuration_id"]: job["configuration"].get(
                 "participant_idle_cap_rule", "none"
@@ -367,6 +387,203 @@ class JournalExperimentTests(unittest.TestCase):
                 allow_dirty=True,
             )
             self.assertEqual(errors, [])
+
+    def test_reuses_equivalent_result_without_executing_target_cell(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="journal_reuse_") as temporary:
+            root = Path(temporary)
+            source_config_path = root / "source.json"
+            target_config_path = root / "target.json"
+            common_configuration = {
+                "executor": "org_bg_d2",
+                "objective_mode": "bg_d2",
+                "backend": "rc2",
+            }
+            common = {
+                "schema_version": 1,
+                "timeout_seconds": 30,
+                "controller_grace_seconds": 5,
+                "run_order_seed": 19,
+                "require_clean_worktree": False,
+                "datasets": [
+                    {
+                        "id": "one",
+                        "manifest": str(PROJECT_ROOT / "instances_manifest.csv"),
+                        "family": "original",
+                        "instance_names": [
+                            "forum-13.original",
+                            "tic-12.original",
+                        ],
+                    }
+                ],
+            }
+            source_config = {
+                **common,
+                "campaign_name": "unit-reuse-source",
+                "blocks": [
+                    {
+                        "id": "source-block",
+                        "datasets": ["one"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {**common_configuration, "id": "source-model"}
+                        ],
+                    }
+                ],
+            }
+            target_config = {
+                **common,
+                "campaign_name": "unit-reuse-target",
+                "reuse_results": [
+                    {
+                        "source_campaign_id": "unit-reuse-source",
+                        "source_block_id": "source-block",
+                        "source_configuration_id": "source-model",
+                        "source_repetition": 1,
+                        "target_block_id": "target-block",
+                        "target_configuration_id": "target-model",
+                        "target_repetition": 1,
+                    }
+                ],
+                "blocks": [
+                    {
+                        "id": "target-block",
+                        "datasets": ["one"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {**common_configuration, "id": "target-model"}
+                        ],
+                    }
+                ],
+            }
+            source_config_path.write_text(
+                json.dumps(source_config), encoding="utf-8"
+            )
+            target_config_path.write_text(
+                json.dumps(target_config), encoding="utf-8"
+            )
+            runner = PROJECT_ROOT / "src" / "Journal_Experiment.py"
+            source_outputs = [root / f"source-shard-{index}" for index in range(2)]
+            target_outputs = [root / f"target-shard-{index}" for index in range(2)]
+            for shard_index, (source_output, target_output) in enumerate(
+                zip(source_outputs, target_outputs)
+            ):
+                shard_args = [
+                    "--shard-count",
+                    "2",
+                    "--shard-index",
+                    str(shard_index),
+                ]
+                source_run = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(source_config_path),
+                        "--output-dir",
+                        str(source_output),
+                        "--allow-dirty",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    source_run.returncode,
+                    0,
+                    source_run.stdout + source_run.stderr,
+                )
+                target_run = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(target_config_path),
+                        "--output-dir",
+                        str(target_output),
+                        "--reuse-output",
+                        str(source_output),
+                        "--allow-dirty",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    target_run.returncode,
+                    0,
+                    target_run.stdout + target_run.stderr,
+                )
+                self.assertIn("imported=1", target_run.stdout)
+                self.assertIn("pending_selected=0", target_run.stdout)
+                target_resume = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(target_config_path),
+                        "--output-dir",
+                        str(target_output),
+                        "--reuse-output",
+                        str(source_output),
+                        "--allow-dirty",
+                        "--resume",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    target_resume.returncode,
+                    0,
+                    target_resume.stdout + target_resume.stderr,
+                )
+                self.assertIn("already_completed=1", target_resume.stdout)
+                self.assertIn("pending_selected=0", target_resume.stdout)
+                records = [
+                    json.loads(line)
+                    for line in (
+                        target_output / "raw" / "results.jsonl"
+                    ).read_text(encoding="utf-8").splitlines()
+                ]
+                self.assertEqual(len(records), 1)
+                row = records[0]["row"]
+                self.assertEqual(row["result_origin"], "reused")
+                self.assertEqual(
+                    row["reused_from_configuration_id"], "source-model"
+                )
+                self.assertEqual(
+                    row["planned_configuration_id"], "target-model"
+                )
+                errors, report = validate_campaign(
+                    target_output,
+                    allow_dirty=True,
+                    allow_incomplete=True,
+                )
+                self.assertEqual(errors, [])
+                self.assertTrue(report["valid"])
+
+            merged = root / "target-merged"
+            merge_report = merge_shards(
+                target_outputs,
+                merged,
+                allow_dirty=True,
+            )
+            self.assertEqual(merge_report["latest_attempts"], 2)
+            errors, report = validate_campaign(
+                merged,
+                allow_dirty=True,
+            )
+            self.assertEqual(errors, [])
+            self.assertTrue(report["valid"])
 
     def test_sigterm_leaves_active_cell_uncommitted_for_resume(self) -> None:
         with tempfile.TemporaryDirectory(prefix="journal_signal_") as temporary:

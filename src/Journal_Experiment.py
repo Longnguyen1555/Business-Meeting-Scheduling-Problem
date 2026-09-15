@@ -9,6 +9,7 @@ import platform
 import random
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -523,6 +524,71 @@ def build_plan(
     expected_jobs = config.get("expected_job_count")
     if not only_blocks and expected_jobs is not None and len(jobs) != int(expected_jobs):
         raise ValueError(f"frozen campaign expects {expected_jobs} jobs, got {len(jobs)}")
+    reuse_results = config.get("reuse_results", [])
+    if not isinstance(reuse_results, list):
+        raise ValueError("reuse_results must be a list")
+    normalized_reuse_results: list[dict[str, Any]] = []
+    target_cells = {
+        (
+            str(job["experiment_block"]),
+            str(job["planned_configuration_id"]),
+            int(job["repetition"]),
+        )
+        for job in jobs
+    }
+    seen_reuse_targets: set[tuple[str, str, int]] = set()
+    required_reuse_fields = (
+        "source_campaign_id",
+        "source_block_id",
+        "source_configuration_id",
+        "source_repetition",
+        "target_block_id",
+        "target_configuration_id",
+        "target_repetition",
+    )
+    for position, raw_rule in enumerate(reuse_results, start=1):
+        if not isinstance(raw_rule, dict):
+            raise ValueError(f"reuse_results entry {position} must be an object")
+        missing_fields = [
+            field for field in required_reuse_fields if field not in raw_rule
+        ]
+        if missing_fields:
+            raise ValueError(
+                f"reuse_results entry {position} is missing: "
+                + ", ".join(missing_fields)
+            )
+        rule = {
+            "source_campaign_id": str(raw_rule["source_campaign_id"]),
+            "source_block_id": str(raw_rule["source_block_id"]),
+            "source_configuration_id": str(
+                raw_rule["source_configuration_id"]
+            ),
+            "source_repetition": int(raw_rule["source_repetition"]),
+            "target_block_id": str(raw_rule["target_block_id"]),
+            "target_configuration_id": str(
+                raw_rule["target_configuration_id"]
+            ),
+            "target_repetition": int(raw_rule["target_repetition"]),
+        }
+        if rule["source_repetition"] <= 0 or rule["target_repetition"] <= 0:
+            raise ValueError("reuse result repetitions must be positive")
+        target = (
+            rule["target_block_id"],
+            rule["target_configuration_id"],
+            rule["target_repetition"],
+        )
+        if target not in target_cells:
+            raise ValueError(
+                "reuse_results references an unknown target cell: "
+                f"{target!r}"
+            )
+        if target in seen_reuse_targets:
+            raise ValueError(
+                f"multiple reuse_results entries target the same cell: {target!r}"
+            )
+        seen_reuse_targets.add(target)
+        normalized_reuse_results.append(rule)
+
     payload = {
         "schema_version": SCHEMA_VERSION,
         "campaign_id": config["campaign_name"],
@@ -535,6 +601,8 @@ def build_plan(
         "job_count": len(jobs),
         "jobs": jobs,
     }
+    if normalized_reuse_results:
+        payload["reuse_results"] = normalized_reuse_results
     payload["plan_sha256"] = sha256_text(canonical_json(payload))
     return payload
 
@@ -958,6 +1026,7 @@ def run_job(
     row.update(
         {
             "campaign_id": campaign_id,
+            "result_origin": "executed",
             "experiment_block": job["experiment_block"],
             "planned_configuration_id": job["planned_configuration_id"],
             "repetition": job["repetition"],
@@ -999,6 +1068,357 @@ def materialize_results(output_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _configuration_without_id(configuration: dict[str, Any]) -> dict[str, Any]:
+    comparable = dict(configuration)
+    comparable.pop("id", None)
+    return comparable
+
+
+def _validate_reuse_source(
+    source_output: Path,
+    *,
+    allow_dirty: bool,
+) -> None:
+    command = [
+        sys.executable,
+        str(PROJECT_ROOT / "src" / "Validate_Journal_Run.py"),
+        "--output",
+        str(source_output),
+        "--allow-incomplete",
+    ]
+    if allow_dirty:
+        command.append("--allow-dirty")
+    completed = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stdout + completed.stderr).strip()
+        raise ValueError(
+            f"reuse source failed validation: {source_output}: {detail}"
+        )
+
+
+def _reuse_environment_mismatches(
+    target: dict[str, Any],
+    source: dict[str, Any],
+) -> list[str]:
+    exact_fields = (
+        "git_commit",
+        "git_dirty",
+        "requirements_sha256",
+        "manifest_sha256",
+        "uwrmaxsat_sha256",
+        "required_machine",
+        "python_version",
+        "kernel_release",
+        "cpu_model",
+        "physical_cpu_cores",
+        "logical_cpu_cores",
+    )
+    return [
+        field for field in exact_fields if source.get(field) != target.get(field)
+    ]
+
+
+def _copy_reused_log(
+    source_output: Path,
+    target_output: Path,
+    source_campaign_id: str,
+    source_log: str,
+) -> str:
+    if not source_log:
+        return ""
+    relative = Path(source_log)
+    candidates: list[Path] = []
+    direct = source_output / relative
+    if direct.is_file():
+        candidates.append(direct)
+    if not candidates:
+        candidates.extend(
+            path
+            for path in (source_output / "logs").glob(
+                f"**/{relative.name}"
+            )
+            if path.is_file()
+        )
+    if len(candidates) != 1:
+        return ""
+    safe_campaign = re.sub(r"[^A-Za-z0-9_.-]+", "_", source_campaign_id)
+    destination = (
+        target_output / "logs" / "reused" / safe_campaign / relative.name
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.exists():
+        shutil.copy2(candidates[0], destination)
+    return destination.relative_to(target_output).as_posix()
+
+
+def import_reused_results(
+    output_dir: Path,
+    plan: dict[str, Any],
+    environment: dict[str, Any],
+    source_outputs: Iterable[Path],
+    *,
+    execution_shard_count: int,
+    execution_shard_indices: tuple[int, ...],
+    allow_dirty: bool = False,
+) -> dict[str, Any]:
+    """Import planned result cells from compatible completed campaigns."""
+
+    rules = list(plan.get("reuse_results", []))
+    resolved_sources = [path.resolve() for path in source_outputs]
+    if not rules:
+        if resolved_sources:
+            raise ValueError("--reuse-output was provided but the plan has no rules")
+        return {"imported": 0, "already_completed": 0, "sources": []}
+    if not resolved_sources:
+        raise ValueError(
+            "this campaign requires --reuse-output for its planned reused results"
+        )
+
+    sources: dict[str, dict[str, Any]] = {}
+    for source_output in resolved_sources:
+        _validate_reuse_source(source_output, allow_dirty=allow_dirty)
+        source_plan = json.loads(
+            (source_output / "plan.json").read_text(encoding="utf-8")
+        )
+        source_environment = json.loads(
+            (source_output / "environment.json").read_text(encoding="utf-8")
+        )
+        campaign_id = str(source_plan.get("campaign_id", ""))
+        if not campaign_id:
+            raise ValueError(f"reuse source has no campaign id: {source_output}")
+        if campaign_id in sources:
+            raise ValueError(
+                f"multiple reuse outputs provide campaign {campaign_id!r}"
+            )
+        mismatches = _reuse_environment_mismatches(
+            environment, source_environment
+        )
+        if mismatches:
+            raise ValueError(
+                f"reuse source {campaign_id!r} has incompatible environment "
+                "fields: " + ", ".join(mismatches)
+            )
+        if float(source_plan.get("timeout_seconds", -1)) != float(
+            plan.get("timeout_seconds", -2)
+        ):
+            raise ValueError(
+                f"reuse source {campaign_id!r} has a different timeout"
+            )
+        source_records = latest_attempts(
+            _read_jsonl(source_output / "raw" / "results.jsonl")
+        )
+        source_jobs = {
+            (
+                str(job["experiment_block"]),
+                str(job["planned_configuration_id"]),
+                int(job["repetition"]),
+                str(job["instance_content_id"]),
+            ): job
+            for job in source_plan.get("jobs", [])
+        }
+        sources[campaign_id] = {
+            "output": source_output,
+            "plan": source_plan,
+            "environment": source_environment,
+            "records": source_records,
+            "jobs": source_jobs,
+        }
+
+    missing_campaigns = sorted(
+        {str(rule["source_campaign_id"]) for rule in rules} - set(sources)
+    )
+    if missing_campaigns:
+        raise ValueError(
+            "no --reuse-output provides required campaigns: "
+            + ", ".join(missing_campaigns)
+        )
+
+    target_assignments = execution_shard_assignments(
+        plan, execution_shard_count
+    )
+    target_rules = {
+        (
+            str(rule["target_block_id"]),
+            str(rule["target_configuration_id"]),
+            int(rule["target_repetition"]),
+        ): rule
+        for rule in rules
+    }
+    target_raw_path = output_dir / "raw" / "results.jsonl"
+    target_records = _read_jsonl(target_raw_path)
+    target_latest = latest_attempts(target_records)
+    imported = 0
+    already_completed = 0
+    source_reports: dict[str, dict[str, Any]] = {
+        campaign_id: {
+            "campaign_id": campaign_id,
+            "plan_sha256": source["plan"]["plan_sha256"],
+            "imported": 0,
+            "already_completed": 0,
+        }
+        for campaign_id, source in sources.items()
+    }
+
+    for target_job in plan["jobs"]:
+        rule = target_rules.get(
+            (
+                str(target_job["experiment_block"]),
+                str(target_job["planned_configuration_id"]),
+                int(target_job["repetition"]),
+            )
+        )
+        if rule is None:
+            continue
+        if (
+            target_assignments[target_job["run_key"]]
+            not in execution_shard_indices
+        ):
+            continue
+        existing = target_latest.get(target_job["run_key"])
+        if existing is not None and existing.get("row", {}).get(
+            "status"
+        ) in TERMINAL_STATUSES:
+            already_completed += 1
+            source_reports[str(rule["source_campaign_id"])][
+                "already_completed"
+            ] += 1
+            continue
+
+        source_campaign_id = str(rule["source_campaign_id"])
+        source = sources.get(source_campaign_id)
+        if source is None:
+            raise ValueError(
+                f"no --reuse-output provides campaign {source_campaign_id!r}"
+            )
+        source_key = (
+            str(rule["source_block_id"]),
+            str(rule["source_configuration_id"]),
+            int(rule["source_repetition"]),
+            str(target_job["instance_content_id"]),
+        )
+        source_job = source["jobs"].get(source_key)
+        if source_job is None:
+            raise ValueError(
+                "reuse source plan is missing the required cell: "
+                f"{source_key!r}"
+            )
+        if canonical_json(
+            _configuration_without_id(source_job["configuration"])
+        ) != canonical_json(
+            _configuration_without_id(target_job["configuration"])
+        ):
+            raise ValueError(
+                "reuse source and target configurations differ beyond their IDs: "
+                f"{source_job['planned_configuration_id']!r} -> "
+                f"{target_job['planned_configuration_id']!r}"
+            )
+        source_record = source["records"].get(source_job["run_key"])
+        if source_record is None:
+            raise ValueError(
+                f"reuse source has no result for {source_job['run_key']!r}"
+            )
+        source_row = source_record.get("row", {})
+        if source_row.get("status") not in TERMINAL_STATUSES:
+            raise ValueError(
+                f"reuse source result is not terminal: {source_job['run_key']!r}"
+            )
+
+        row = dict(source_row)
+        source_log = str(row.get("campaign_log", ""))
+        row.update(
+            {
+                "campaign_id": plan["campaign_id"],
+                "experiment_block": target_job["experiment_block"],
+                "planned_configuration_id": target_job[
+                    "planned_configuration_id"
+                ],
+                "repetition": target_job["repetition"],
+                "run_order": target_job["run_order"],
+                "run_key": target_job["run_key"],
+                "attempt": (
+                    int(existing["attempt"]) + 1 if existing is not None else 1
+                ),
+                "run_order_seed": plan["run_order_seed"],
+                "campaign_plan_sha256": plan["plan_sha256"],
+                "execution_shard_count": execution_shard_count,
+                "execution_shard_indices": ",".join(
+                    str(index) for index in execution_shard_indices
+                ),
+                "execution_shard_index": target_assignments[
+                    target_job["run_key"]
+                ],
+                "execution_shard_policy": EXECUTION_SHARD_POLICY,
+                "result_origin": "reused",
+                "reused_from_campaign_id": source_campaign_id,
+                "reused_from_plan_sha256": source["plan"]["plan_sha256"],
+                "reused_from_run_key": source_job["run_key"],
+                "reused_from_experiment_block": source_job[
+                    "experiment_block"
+                ],
+                "reused_from_configuration_id": source_job[
+                    "planned_configuration_id"
+                ],
+                "reused_from_repetition": source_job["repetition"],
+                "reused_from_run_order": source_job["run_order"],
+                "reused_from_run_order_seed": source["plan"][
+                    "run_order_seed"
+                ],
+                "reused_from_execution_shard_index": source_row.get(
+                    "execution_shard_index", ""
+                ),
+                "reused_from_campaign_log": source_log,
+                "reused_source_record_sha256": sha256_text(
+                    canonical_json(source_record)
+                ),
+            }
+        )
+        row["campaign_log"] = _copy_reused_log(
+            source["output"],
+            output_dir,
+            source_campaign_id,
+            source_log,
+        )
+        record = {
+            "run_key": target_job["run_key"],
+            "attempt": row["attempt"],
+            "completed_utc": source_record.get("completed_utc", utc_now()),
+            "row": row,
+        }
+        _append_jsonl(target_raw_path, record)
+        target_latest[target_job["run_key"]] = record
+        imported += 1
+        source_reports[source_campaign_id]["imported"] += 1
+
+    expected_selected = sum(
+        (
+            str(job["experiment_block"]),
+            str(job["planned_configuration_id"]),
+            int(job["repetition"]),
+        )
+        in target_rules
+        and target_assignments[job["run_key"]] in execution_shard_indices
+        for job in plan["jobs"]
+    )
+    if imported + already_completed != expected_selected:
+        raise ValueError(
+            "reuse import did not cover every planned target result: "
+            f"covered={imported + already_completed}, "
+            f"expected={expected_selected}"
+        )
+    return {
+        "imported": imported,
+        "already_completed": already_completed,
+        "expected_selected": expected_selected,
+        "sources": sorted(source_reports.values(), key=lambda item: item["campaign_id"]),
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run deterministic, append-only journal experiment campaigns."
@@ -1014,6 +1434,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--retry-errors", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--reuse-output",
+        action="append",
+        default=[],
+        help=(
+            "validated earlier campaign output supplying result cells declared "
+            "by reuse_results; repeat for multiple source campaigns"
+        ),
+    )
     parser.add_argument("--max-runs", type=int)
     parser.add_argument("--only-block", action="append", default=[])
     parser.add_argument(
@@ -1197,6 +1626,29 @@ def main(argv: list[str] | None = None) -> int:
         environment["git_commit"] = commit
         environment["git_dirty"] = dirty
         _write_json(environment_path, environment)
+
+    try:
+        reuse_report = import_reused_results(
+            output_dir,
+            plan,
+            environment,
+            [Path(value) for value in args.reuse_output],
+            execution_shard_count=shard_count,
+            execution_shard_indices=shard_indices,
+            allow_dirty=args.allow_dirty,
+        )
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"ERROR: unable to reuse planned results: {exc}") from exc
+    if plan.get("reuse_results"):
+        environment["result_reuse"] = reuse_report
+        _write_json(environment_path, environment)
+        print(
+            "reuse_state "
+            f"imported={reuse_report['imported']} "
+            f"already_completed={reuse_report['already_completed']} "
+            f"expected_selected={reuse_report['expected_selected']}",
+            flush=True,
+        )
 
     raw_path = output_dir / "raw" / "results.jsonl"
     records = _read_jsonl(raw_path)

@@ -372,10 +372,28 @@ case "$command" in
   main-objectives)
     run_warmup
     main_objectives_output=main-objectives
+    compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-}
     if [[ -n "$shard_label" ]]; then
       main_objectives_output="$main_objectives_output/$shard_label"
+      if [[ -z "$compact_reuse_output" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives/$shard_label"
+      fi
+    elif [[ -z "$compact_reuse_output" ]]; then
+      if [[ -d "$OUTPUT_ROOT/compact-objectives-merged" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives-merged"
+      else
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives"
+      fi
     fi
-    run_campaign main_objectives "$main_objectives_output" "${shard_args[@]}"
+    if [[ ! -f "$compact_reuse_output/plan.json" ]]; then
+      echo "ERROR: main-objectives reuses compact-objectives repetition 1" >&2
+      echo "ERROR: missing reuse source $compact_reuse_output" >&2
+      echo "ERROR: run compact-objectives first or set COMPACT_OBJECTIVES_OUTPUT" >&2
+      exit 2
+    fi
+    run_campaign main_objectives "$main_objectives_output" \
+      --reuse-output "$compact_reuse_output" \
+      "${shard_args[@]}"
     ;;
   final-tier)
     main_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives}
@@ -473,7 +491,7 @@ Commands:
   compact-f               paired F All-126 ablation (2,268 runs)
   compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
   cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
-  main-objectives         2 models x 3 objectives x 3 repetitions (2,268 runs)
+  main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
   final-tier              select by main IR-IM-IS, then run IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES
@@ -485,6 +503,9 @@ Every campaign is single-worker, append-only and resumable. Re-run the same
 command after interruption; the script adds --resume automatically.
 Set SHARD_COUNT=N and SHARD_INDICES=i[,j...] to divide one unchanged plan
 between VMs. Shard indices are zero-based.
+main-objectives requires the matching compact-objectives output and reuses its
+three selected repetition-1 cells. Set COMPACT_OBJECTIVES_OUTPUT only when the
+source is outside the default matching shard/output directory.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
 EOF
     ;;

@@ -26,5 +26,34 @@
       "family": "all"
     }
   ],
+  "reuse_results": [
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_bg_d2_ablation",
+      "source_configuration_id": "bg_acf",
+      "source_repetition": 1,
+      "target_block_id": "primary_two_models_three_objectives",
+      "target_configuration_id": "compact_acf_bg_d2",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_ablation",
+      "source_configuration_id": "ir_cdf",
+      "source_repetition": 1,
+      "target_block_id": "primary_two_models_three_objectives",
+      "target_configuration_id": "compact_cdf_ir",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_im_is_ablation",
+      "source_configuration_id": "irimis_cdf",
+      "source_repetition": 1,
+      "target_block_id": "primary_two_models_three_objectives",
+      "target_configuration_id": "compact_cdf_ir_im_is",
+      "target_repetition": 1
+    }
+  ],
   "blocks_from": "main_objectives_blocks.json"
 }

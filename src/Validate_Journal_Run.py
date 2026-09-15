@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from fractions import Fraction
@@ -167,6 +168,14 @@ def validate_campaign(
         return [f"invalid results.jsonl: {exc}"], {}
 
     jobs = {job["run_key"]: job for job in plan.get("jobs", [])}
+    reuse_target_rules = {
+        (
+            str(rule["target_block_id"]),
+            str(rule["target_configuration_id"]),
+            int(rule["target_repetition"]),
+        ): rule
+        for rule in plan.get("reuse_results", [])
+    }
     unhashed_plan = dict(plan)
     recorded_plan_sha256 = unhashed_plan.pop("plan_sha256", "")
     recomputed_plan_sha256 = sha256_text(canonical_json(unhashed_plan))
@@ -230,6 +239,7 @@ def validate_campaign(
     )
 
     status_counts: Counter[str] = Counter()
+    result_origin_counts: Counter[str] = Counter()
     content_ids: set[str] = set()
     lineage_ids: set[str] = set()
     rows: list[dict[str, Any]] = []
@@ -269,6 +279,52 @@ def validate_campaign(
                     f"{run_key}: metadata mismatch for {field}: "
                     f"{row.get(field)!r}!={expected!r}"
                 )
+        reuse_rule = reuse_target_rules.get(
+            (
+                str(job["experiment_block"]),
+                str(job["planned_configuration_id"]),
+                int(job["repetition"]),
+            )
+        )
+        result_origin = str(row.get("result_origin", "") or "executed")
+        result_origin_counts[result_origin] += 1
+        if reuse_rule is not None and result_origin != "reused":
+            errors.append(f"{run_key}: planned reused result was executed")
+        elif reuse_rule is None and result_origin == "reused":
+            errors.append(f"{run_key}: unplanned reused result")
+        elif result_origin not in {"executed", "reused"}:
+            errors.append(f"{run_key}: unknown result origin {result_origin!r}")
+        if reuse_rule is not None and result_origin == "reused":
+            expected_reuse = {
+                "reused_from_campaign_id": reuse_rule["source_campaign_id"],
+                "reused_from_experiment_block": reuse_rule["source_block_id"],
+                "reused_from_configuration_id": reuse_rule[
+                    "source_configuration_id"
+                ],
+                "reused_from_repetition": reuse_rule["source_repetition"],
+            }
+            for field, expected in expected_reuse.items():
+                if str(row.get(field, "")) != str(expected):
+                    errors.append(
+                        f"{run_key}: reuse provenance mismatch for {field}"
+                    )
+            expected_source_run_key = "::".join(
+                (
+                    str(reuse_rule["source_campaign_id"]),
+                    str(reuse_rule["source_block_id"]),
+                    str(job["instance_content_id"]),
+                    str(reuse_rule["source_configuration_id"]),
+                    f"rep-{reuse_rule['source_repetition']}",
+                )
+            )
+            if row.get("reused_from_run_key") != expected_source_run_key:
+                errors.append(f"{run_key}: reused source run key mismatch")
+            for field in (
+                "reused_from_plan_sha256",
+                "reused_source_record_sha256",
+            ):
+                if not re.fullmatch(r"[0-9a-f]{64}", str(row.get(field, ""))):
+                    errors.append(f"{run_key}: invalid {field}")
         expected_mode = job["configuration"].get("objective_mode", "")
         if str(row.get("objective_mode", "")) != str(expected_mode):
             errors.append(f"{run_key}: objective_mode mismatch")
@@ -502,6 +558,7 @@ def validate_campaign(
         "missing_jobs": len(missing),
         "extra_jobs": len(extra),
         "status_counts": dict(status_counts),
+        "result_origin_counts": dict(result_origin_counts),
         "unique_contents": len(content_ids - {""}),
         "unique_lineages": len(lineage_ids - {""}),
         "agreement_groups_checked": agreement_checked,
