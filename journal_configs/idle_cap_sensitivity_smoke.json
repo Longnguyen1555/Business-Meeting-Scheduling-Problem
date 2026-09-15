@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-idle-cap-sensitivity-smoke-v1",
+  "description": "Deferred optional study, excluded from the baseline comparison. Two-instance cap sensitivity smoke test.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 30,
+  "run_order_seed": 20260916,
+  "require_clean_worktree": false,
+  "expected_job_count": 6,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "original",
+      "max_instances": 2
+    }
+  ],
+  "blocks_from": "idle_cap_sensitivity_blocks.json"
+}

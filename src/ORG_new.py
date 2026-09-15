@@ -23,6 +23,11 @@ from MaxSAT_Solver import (
     executable_sha256,
     resolve_uwrmaxsat_binary,
 )
+from B2B_Instance import (
+    compute_participant_idle_bounds,
+    interpolate_participant_idle_caps,
+    read_instance as read_shared_instance,
+)
 
 try:
     import psutil
@@ -35,8 +40,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             'Solve B2B instances with the paper-style ORG MaxSAT encoding. '
-            'The objective minimizes IdleRange(P*) over participants with at '
-            'least two meetings; no hard objective cap is added.'
+            'Paper-style ORG encoding for IR, IR-IM-IS, or IR-IM-ISQ, '
+            'with optional participant idle caps.'
         )
     )
     input_group = parser.add_mutually_exclusive_group()
@@ -59,6 +64,17 @@ def parse_args():
     parser.add_argument('--timeout', type=float, default=7200.0)
     parser.add_argument('--uwrmaxsat-bin')
     parser.add_argument('--uwrmaxsat-sha256')
+    parser.add_argument(
+        '--objective-mode',
+        choices=['ir', 'ir_im_is', 'ir_im_isq'],
+        default='ir',
+    )
+    parser.add_argument(
+        '--participant-idle-cap-rule',
+        choices=['none', 'interpolated_bounds'],
+        default='none',
+    )
+    parser.add_argument('--participant-idle-cap-alpha', default='1/2')
     parser.add_argument('--csv')
     parser.add_argument('--excel-dir')
     args = parser.parse_args()
@@ -66,6 +82,12 @@ def parse_args():
         parser.error('--timeout must be positive')
     if args.keep_path_aliases and args.data_dir is None:
         parser.error('--keep-path-aliases requires --data-dir')
+    if args.participant_idle_cap_rule != 'none' and args.objective_mode == 'ir':
+        parser.error('participant idle caps apply only to IR-IM-IS/ISQ')
+    try:
+        interpolate_participant_idle_caps((0,), (1,), args.participant_idle_cap_alpha)
+    except (ValueError, ZeroDivisionError) as exc:
+        parser.error(str(exc))
     return args
 
 
@@ -89,13 +111,35 @@ MEMORY_METRIC = 'peak_process_tree_rss_mb'
 ORG_IMPLIED_PACKAGE_CODE = 'OBIC12P'
 ORG_IMPLIED_PACKAGE_NAME = 'OldBestIC12+'
 ORG_ENCODING_VARIANT = 'org_old_best_ic12plus'
+ORG_OBJECTIVE_METADATA = {
+    'ir': ('IRP', 'IdleRangePstar', 'internal_idle_slot_range_pstar'),
+    'ir_im_is': (
+        'IRIMIS', 'IdleRangeThenMaximumIdleThenIdleSum',
+        'lexicographic_idle_range_maximum_idle_then_idle_sum',
+    ),
+    'ir_im_isq': (
+        'IRIMISQ', 'IdleRangeThenMaximumIdleThenSquaredIdleSum',
+        'lexicographic_idle_range_maximum_idle_then_squared_idle_sum',
+    ),
+}
+ORG_OBJECTIVE_CODE, ORG_OBJECTIVE_FACTOR, ORG_OBJECTIVE_NAME = (
+    ORG_OBJECTIVE_METADATA[ARGS.objective_mode]
+)
 ORG_CONFIGURATION_LABEL = (
-    f'ORG-F-PW-DE-PSC-IRP-UW-{ORG_IMPLIED_PACKAGE_CODE}'
+    f'ORG-F-PW-DE-PSC-{ORG_OBJECTIVE_CODE}-UW-{ORG_IMPLIED_PACKAGE_CODE}'
 )
 ORG_CONFIGURATION_ID = (
     'baseline1__model-org_old_best_maxsat__m-full__p-pairwise__'
     'g-direct__b-per_slot_cardinality__o-idle_range_pstar__'
     's-uwrmaxsat__i-old_best_ic12plus__fairness-none'
+    if ARGS.objective_mode == 'ir'
+    else (
+        'baseline1__model-org_old_best_maxsat__m-full__p-pairwise__'
+        'g-direct__b-per_slot_cardinality__'
+        f'o-{ARGS.objective_mode}__s-uwrmaxsat__i-old_best_ic12plus__'
+        f'cap-{ARGS.participant_idle_cap_rule}__'
+        f'alpha-{ARGS.participant_idle_cap_alpha.replace("/", "of")}'
+    )
 )
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -576,6 +620,22 @@ for instance_spec in instance_specs:
 
     start_time = time.time()
     nBusiness, nMeetings, nTables, nTotalSlots, nMorningSlots, requested, meetingsxBusiness, nMeetingsBusiness, forbidden, fixed, precedences = read_input()
+    shared_instance = read_shared_instance(instance_spec.path)
+    idle_lower_zero, idle_upper_zero, idle_bounds_feasible = (
+        compute_participant_idle_bounds(shared_instance)
+    )
+    idle_caps_zero = (
+        interpolate_participant_idle_caps(
+            idle_lower_zero,
+            idle_upper_zero,
+            ARGS.participant_idle_cap_alpha,
+        )
+        if ARGS.participant_idle_cap_rule == 'interpolated_bounds'
+        else idle_upper_zero
+    )
+    participant_idle_lower_bounds = [0, *idle_lower_zero]
+    participant_idle_upper_bounds = [0, *idle_upper_zero]
+    participant_idle_caps = [0, *idle_caps_zero]
     objective_participants = [
         p for p in range(1, nBusiness + 1)
         if nMeetingsBusiness[p] >= 2
@@ -583,7 +643,9 @@ for instance_spec in instance_specs:
     # The range of an empty or singleton P* is zero, so no break-objective
     # variables are required in those degenerate cases.
     objective_encoding_participants = (
-        objective_participants if len(objective_participants) >= 2 else []
+        objective_participants
+        if ARGS.objective_mode != 'ir' or len(objective_participants) >= 2
+        else []
     )
     input_time = time.time()
     print(f"Input parsing completed in {input_time - start_time:.4f} seconds")
@@ -810,6 +872,14 @@ for instance_spec in instance_specs:
         for j in range(upper + 1, max_gap_slots + 1):
             cnf.append([-sortedGap[p][j]])
 
+    participant_idle_cap_clause_count = 0
+    if ARGS.participant_idle_cap_rule == 'interpolated_bounds':
+        for p in objective_participants:
+            cap = participant_idle_caps[p]
+            if cap < max_gap_slots:
+                cnf.append([-sortedGap[p][cap + 1]])
+                participant_idle_cap_clause_count += 1
+
     # Exact unary maximum, minimum, and their difference. For each j:
     # maxGap[j] = OR_{p in P*} sortedGap[p][j]
     # minGap[j] = AND_{p in P*} sortedGap[p][j]
@@ -886,20 +956,51 @@ for instance_spec in instance_specs:
     for clause in cnf.clauses:
         wcnf.append(clause)  # Default weight is top (hard)
 
-    # SOFT CONSTRAINTS:
-    # Minimize IdleRange(P*), not the sum of participant breaks.
-    # One violated soft clause corresponds to one unit of
-    # max_{p in P*}(total_gap_slots) - min_{p in P*}(total_gap_slots).
+    # SOFT CONSTRAINTS: exact one-shot lexicographic scalarization.
+    effective_upper = {
+        p: (
+            participant_idle_caps[p]
+            if ARGS.participant_idle_cap_rule == 'interpolated_bounds'
+            else participant_gap_upper[p]
+        )
+        for p in objective_participants
+    }
+    idle_sum_upper = sum(effective_upper.values())
+    squared_idle_upper = sum(value * value for value in effective_upper.values())
+    final_upper = (
+        squared_idle_upper if ARGS.objective_mode == 'ir_im_isq'
+        else idle_sum_upper
+    )
+    maximum_upper = max(effective_upper.values(), default=0)
+    maximum_weight = final_upper + 1
+    range_weight = (maximum_upper + 1) * (final_upper + 1)
+    objective_tier_weights = (
+        (1,) if ARGS.objective_mode == 'ir'
+        else (range_weight, maximum_weight, 1)
+    )
+    soft_clause_weights = []
     for j in range(1, max_gap_slots + 1):
-        wcnf.append([-difGap[j]], weight=1)
+        weight = 1 if ARGS.objective_mode == 'ir' else range_weight
+        wcnf.append([-difGap[j]], weight=weight)
+        soft_clause_weights.append(weight)
+    if ARGS.objective_mode in {'ir_im_is', 'ir_im_isq'}:
+        for j in range(1, max_gap_slots + 1):
+            wcnf.append([-maxGap[j]], weight=maximum_weight)
+            soft_clause_weights.append(maximum_weight)
+        for p in objective_participants:
+            for j in range(1, max_gap_slots + 1):
+                weight = 2 * j - 1 if ARGS.objective_mode == 'ir_im_isq' else 1
+                wcnf.append([-sortedGap[p][j]], weight=weight)
+                soft_clause_weights.append(weight)
 
     constraint_time = time.time()
     print(f"Constraint building completed in {constraint_time - input_time:.4f} seconds")
     print(f"Total variables: {variable_size}")
     print(f"Total hard clauses: {len(cnf.clauses)}")
-    print(f"Total soft clauses: {max_gap_slots}")
+    print(f"Total soft clauses: {len(soft_clause_weights)}")
     print(
-        'Hard objective cap: disabled (added clauses: 0)'
+        f'Participant idle cap: {ARGS.participant_idle_cap_rule} '
+        f'(added clauses: {participant_idle_cap_clause_count})'
     )
 
     def parse_uwr_output(output):
@@ -942,7 +1043,7 @@ for instance_spec in instance_specs:
             status, solution_cost, model = parse_uwr_output(output)
             normalized_status = (status or '').upper()
             if normalized_status in {'OPTIMUM FOUND', 'OPTIMAL', 'OPTIMUM'} and model:
-                print(f"UWrMaxSAT optimum IdleRange(P*): {solution_cost}")
+                print(f"UWrMaxSAT optimum scalar cost: {solution_cost}")
                 return model, solution_cost, 'UWrMaxSAT', 'OPTIMAL', command
             if normalized_status in {'UNSAT', 'UNSATISFIABLE'}:
                 return None, None, 'UWrMaxSAT', 'UNSAT', command
@@ -990,6 +1091,11 @@ for instance_spec in instance_specs:
     # Independently recompute the new objective from the decoded schedule.
     participant_gap_slots = []
     idle_range_pstar = None
+    maximum_internal_idle_slots = None
+    squared_internal_idle_slots = None
+    total_internal_idle_slots = None
+    objective_vector = None
+    lexicographic_scalar_cost = None
     if assignment:
         positive_assignment = {lit for lit in assignment if lit > 0}
         for p in range(1, nBusiness + 1):
@@ -1016,10 +1122,30 @@ for instance_spec in instance_specs:
             if len(objective_values) >= 2
             else 0
         )
+        maximum_internal_idle_slots = max(objective_values, default=0)
+        total_internal_idle_slots = sum(participant_gap_slots)
+        squared_internal_idle_slots = sum(value * value for value in objective_values)
+        objective_vector = {
+            'ir': (idle_range_pstar,),
+            'ir_im_is': (
+                idle_range_pstar,
+                maximum_internal_idle_slots,
+                total_internal_idle_slots,
+            ),
+            'ir_im_isq': (
+                idle_range_pstar,
+                maximum_internal_idle_slots,
+                squared_internal_idle_slots,
+            ),
+        }[ARGS.objective_mode]
+        lexicographic_scalar_cost = sum(
+            weight * value
+            for weight, value in zip(objective_tier_weights, objective_vector)
+        )
         if solver_cost is not None:
-            assert solver_cost == idle_range_pstar, (
+            assert solver_cost == lexicographic_scalar_cost, (
                 f"Objective mismatch: solver_cost={solver_cost}, "
-                f"recomputed_IdleRange(P*)={idle_range_pstar}"
+                f"recomputed_scalar={lexicographic_scalar_cost}"
             )
     print(f"MaxSAT solving completed in {solver_finished - solve_start:.4f} seconds")
 
@@ -1139,13 +1265,20 @@ for instance_spec in instance_specs:
             assert is_true(minGap[j]) == expected_min, f"minGap[{j}] inconsistent"
             assert is_true(difGap[j]) == expected_dif, f"difGap[{j}] inconsistent"
 
-        encoded_objective = sum(
+        encoded_range = sum(
             is_true(difGap[j]) for j in range(1, max_gap_slots + 1)
         )
-        assert encoded_objective == idle_range_pstar, (
-            f"Encoded objective={encoded_objective}, "
+        assert encoded_range == idle_range_pstar, (
+            f"Encoded objective={encoded_range}, "
             f"IdleRange(P*)={idle_range_pstar}"
         )
+        encoded_maximum = sum(
+            is_true(maxGap[j]) for j in range(1, max_gap_slots + 1)
+        )
+        assert encoded_maximum == maximum_internal_idle_slots
+        if ARGS.participant_idle_cap_rule == 'interpolated_bounds':
+            for p in objective_participants:
+                assert participant_gap_slots[p - 1] <= participant_idle_caps[p]
         # Participant load bound per slot
         for t in range(1, nTotalSlots + 1):
             participants_at_t = sum(is_true(y[p][t]) for p in range(1, nBusiness + 1))
@@ -1209,9 +1342,16 @@ for instance_spec in instance_specs:
         'factor_p': 'Pairwise',
         'factor_g': 'Direct-E',
         'factor_b': 'PerSlotCardinality',
-        'factor_o': 'IdleRangePstar',
+        'factor_o': ORG_OBJECTIVE_FACTOR,
         'factor_s': 'UWrMaxSAT',
         'factor_i': ORG_IMPLIED_PACKAGE_NAME,
+        'formalism': 'MaxSAT',
+        'model_family': 'ORGHistorical',
+        'formulation_name': 'ORG-Published-style-Idle',
+        'model_family_display_name': 'Published-style',
+        'model_configuration_display_name': 'Published-style/Full',
+        'implementation_provenance': 'independent_reimplementation',
+        'optimization_procedure_display_name': 'one-shot weighted MaxSAT',
         'domain_mode': 'legacy_full',
         'domain_filter_graph': 'n/a',
         'precedence_encoding': 'pairwise',
@@ -1221,8 +1361,9 @@ for instance_spec in instance_specs:
         'solver_version': f'binary-sha256:{UWRMAXSAT_BINARY_SHA256}',
         'encoding_variant': ORG_ENCODING_VARIANT,
         'idle_encoding': 'per_slot_cardinality',
-        'objective': 'internal_idle_slot_range_pstar',
-        'objective_code': 'IRP',
+        'objective': ORG_OBJECTIVE_NAME,
+        'objective_mode': ARGS.objective_mode,
+        'objective_code': ORG_OBJECTIVE_CODE,
         'implied_constraints_code': ORG_IMPLIED_PACKAGE_CODE,
         'sat_result': status_to_sat_result(solve_status),
         'status': solve_status,
@@ -1240,20 +1381,26 @@ for instance_spec in instance_specs:
         'n_primary_variables': n_primary_variables,
         'n_auxiliary_variables': variable_size - n_primary_variables,
         'n_hard_clauses': len(cnf.clauses),
-        'n_soft_clauses': max_gap_slots,
-        'n_total_clauses': len(cnf.clauses) + max_gap_slots,
+        'n_soft_clauses': len(soft_clause_weights),
+        'n_total_clauses': len(cnf.clauses) + len(soft_clause_weights),
         'n_hard_literals': sum(clause_lengths),
-        'n_soft_literals': max_gap_slots,
-        'n_total_literals': sum(clause_lengths) + max_gap_slots,
+        'n_soft_literals': len(soft_clause_weights),
+        'n_total_literals': sum(clause_lengths) + len(soft_clause_weights),
         'max_hard_clause_length': max(clause_lengths, default=0),
-        'max_soft_clause_length': 1 if max_gap_slots else 0,
+        'max_soft_clause_length': 1 if soft_clause_weights else 0,
         'n_unit_hard_clauses': sum(length == 1 for length in clause_lengths),
         'n_binary_hard_clauses': sum(length == 2 for length in clause_lengths),
         'n_ternary_hard_clauses': sum(length == 3 for length in clause_lengths),
         'n_long_hard_clauses': sum(length >= 4 for length in clause_lengths),
-        'soft_clause_weight': 1 if max_gap_slots else 0,
-        'soft_weight_sum': max_gap_slots,
-        'n_objective_lits': max_gap_slots,
+        'soft_clause_weight': (
+            1 if ARGS.objective_mode == 'ir' and soft_clause_weights else None
+        ),
+        'soft_weight_sum': sum(soft_clause_weights),
+        'max_soft_weight_bits': max(
+            (weight.bit_length() for weight in soft_clause_weights),
+            default=0,
+        ),
+        'n_objective_lits': len(soft_clause_weights),
         'n_optimizer_calls': 1,
         'n_bound_encodings': 0,
         'optimizer_added_variables_peak': 0,
@@ -1284,14 +1431,55 @@ for instance_spec in instance_specs:
         'solver_command': shlex.join(solver_command),
         'solver_message': '',
         'solver_cost': solver_cost,
-        'objective_value': solver_cost,
-        'best_value': solver_cost,
-        'proven_optimum': solver_cost if solve_status == 'OPTIMAL' else None,
+        'objective_value': (
+            objective_vector[0]
+            if objective_vector is not None
+            else (solver_cost if ARGS.objective_mode == 'ir' else None)
+        ),
+        'best_value': (
+            objective_vector[0]
+            if objective_vector is not None
+            else (solver_cost if ARGS.objective_mode == 'ir' else None)
+        ),
+        'proven_optimum': (
+            objective_vector[0]
+            if solve_status == 'OPTIMAL' and objective_vector is not None
+            else None
+        ),
+        'objective_vector': (
+            serialize_list(objective_vector) if objective_vector is not None else ''
+        ),
+        'proven_objective_vector': (
+            serialize_list(objective_vector) if solve_status == 'OPTIMAL' else ''
+        ),
+        'primary_objective_value': (
+            objective_vector[0] if objective_vector is not None else None
+        ),
+        'secondary_objective_value': (
+            objective_vector[1]
+            if objective_vector is not None and len(objective_vector) > 1
+            else None
+        ),
+        'tertiary_objective_value': (
+            objective_vector[2]
+            if objective_vector is not None and len(objective_vector) > 2
+            else None
+        ),
+        'lexicographic_scalar_cost': lexicographic_scalar_cost,
+        'objective_tier_weights': serialize_list(objective_tier_weights),
         'idle_range_pstar': idle_range_pstar,
         'all_participant_idle_range': all_participant_idle_range,
-        'total_internal_idle_slots': (
-            sum(participant_gap_slots) if participant_gap_slots else None
-        ),
+        'total_internal_idle_slots': total_internal_idle_slots,
+        'maximum_internal_idle_slots': maximum_internal_idle_slots,
+        'squared_internal_idle_slots': squared_internal_idle_slots,
+        'participant_internal_idle_slots': serialize_list(participant_gap_slots),
+        'participant_idle_cap_rule': ARGS.participant_idle_cap_rule,
+        'participant_idle_cap_alpha': ARGS.participant_idle_cap_alpha,
+        'participant_idle_lower_bounds': serialize_list(idle_lower_zero),
+        'participant_idle_upper_bounds': serialize_list(idle_upper_zero),
+        'participant_idle_caps': serialize_list(idle_caps_zero),
+        'participant_idle_bounds_feasible': idle_bounds_feasible,
+        'participant_idle_cap_clause_count': participant_idle_cap_clause_count,
         'objective_participant_count': len(objective_participants),
         'objective_participants': serialize_list(objective_participants),
         'participant_gap_slots': serialize_list(participant_gap_slots),
@@ -1312,8 +1500,8 @@ for instance_spec in instance_specs:
 
     print(
         f"Result queued for CSV: {solve_status} | "
-        f"IdleRange(P*)={idle_range_pstar if idle_range_pstar is not None else 'N/A'} | "
-        "hard_objective_cap=disabled"
+        f"objective={objective_vector if objective_vector is not None else 'N/A'} | "
+        f"participant_idle_cap={ARGS.participant_idle_cap_rule}"
     )
 
 

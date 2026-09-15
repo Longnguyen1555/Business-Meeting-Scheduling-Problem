@@ -51,6 +51,8 @@ class B2BMultipleSATSolver:
         objective_mode: str = "ir",
         compact_encoding: str = "reference",
         collision_amo_encoding: str = "pairwise",
+        participant_idle_cap_rule: str = "none",
+        participant_idle_cap_alpha: str = "1/2",
     ) -> None:
         if (
             precedence_mode is None
@@ -59,14 +61,14 @@ class B2BMultipleSATSolver:
         ):
             precedence_mode = "traditional"
         if (
-            objective_mode in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}
+            objective_mode in {"ir", "ir_is", "ir_im_is", "ir_im_isq", "bg_ir_is"}
             and compact_encoding in {"direct_range_soft", "optimized"}
         ):
             raise ValueError(
                 "weighted penalties/direct_range_soft are MaxSAT-only; "
                 "use MaxSAT or choose a SAT-compatible compact preset"
             )
-        if objective_mode == "isq":
+        if objective_mode in {"isq", "ir_im_isq"}:
             raise ValueError("ISQ weighted penalties are MaxSAT-only")
         self.inst = _ensure_instance(instance_or_path)
         self.model = B2BSATModel(
@@ -80,6 +82,8 @@ class B2BMultipleSATSolver:
             objective_mode=objective_mode,
             compact_encoding=compact_encoding,
             collision_amo_encoding=collision_amo_encoding,
+            participant_idle_cap_rule=participant_idle_cap_rule,
+            participant_idle_cap_alpha=participant_idle_cap_alpha,
         )
         self.artifacts = self.model.build_base_cnf()
         if any(
@@ -151,6 +155,25 @@ class B2BMultipleSATSolver:
             ),
             "direct_range_soft_clause_count": (
                 self.artifacts.direct_range_soft_clause_count
+            ),
+            "participant_idle_cap_rule": (
+                self.artifacts.participant_idle_cap_rule
+            ),
+            "participant_idle_cap_alpha": (
+                self.artifacts.participant_idle_cap_alpha
+            ),
+            "participant_idle_lower_bounds": (
+                self.artifacts.participant_idle_lower_bounds
+            ),
+            "participant_idle_upper_bounds": (
+                self.artifacts.participant_idle_upper_bounds
+            ),
+            "participant_idle_caps": self.artifacts.participant_idle_caps,
+            "participant_idle_bounds_feasible": (
+                self.artifacts.participant_idle_bounds_feasible
+            ),
+            "participant_idle_cap_clause_count": (
+                self.artifacts.participant_idle_cap_clause_count
             ),
             "collision_amo_encoding": self.artifacts.collision_amo_encoding,
             "collision_amo_cutoff": self.artifacts.collision_amo_cutoff,

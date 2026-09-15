@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -35,7 +36,7 @@ except ImportError:  # pragma: no cover - production requirements include psutil
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
 TERMINAL_STATUSES = {"OPTIMAL", "UNSAT", "TIMEOUT"}
-SUPPORTED_EXECUTORS = {"main", "org_bg_d2", "org_ir"}
+SUPPORTED_EXECUTORS = {"main", "org_bg_d2", "org_ir", "org_idle"}
 SUPPORTED_BOOLEAN_SOLVERS = {"maxsat", "multiple", "incremental"}
 EXECUTION_SHARD_POLICY = "content_rank_round_robin_v1"
 
@@ -310,6 +311,7 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
             "bg_d2",
             "ir_is",
             "ir_im_is",
+            "ir_im_isq",
             "bg_ir_is",
             "is",
             "isq",
@@ -325,15 +327,38 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
         if (
             solver in {"multiple", "incremental"}
             and configuration["objective_mode"]
-            in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}
+            in {"ir", "ir_is", "ir_im_is", "ir_im_isq", "bg_ir_is"}
             and compact_encoding in {"direct_range_soft", "optimized"}
         ):
             raise ValueError(
                 f"{compact_encoding!r} is MaxSAT-only for "
                 f"{configuration['objective_mode']!r} in {config_id!r}"
             )
-        if configuration["objective_mode"] == "isq" and solver != "maxsat":
+        if configuration["objective_mode"] in {"isq", "ir_im_isq"} and solver != "maxsat":
             raise ValueError("ISQ requires MaxSAT weighted penalties")
+        cap_rule = configuration.get("participant_idle_cap_rule", "none")
+        if cap_rule not in {"none", "interpolated_bounds"}:
+            raise ValueError(f"invalid participant idle cap rule in {config_id!r}")
+        try:
+            cap_alpha = Fraction(
+                str(configuration.get("participant_idle_cap_alpha", "1/2"))
+            )
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError(
+                f"invalid participant idle cap alpha in {config_id!r}"
+            ) from exc
+        if not 0 <= cap_alpha <= 1:
+            raise ValueError(
+                f"participant idle cap alpha outside [0,1] in {config_id!r}"
+            )
+        if cap_rule != "none" and configuration["objective_mode"] not in {
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError(
+                f"participant idle caps do not apply to "
+                f"{configuration['objective_mode']!r} in {config_id!r}"
+            )
         collision_amo = configuration.get("collision_amo", "pairwise")
         if collision_amo not in VALID_COLLISION_AMO_ENCODINGS:
             raise ValueError(
@@ -355,6 +380,23 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
     elif executor == "org_ir":
         if configuration.get("objective_mode", "ir") != "ir":
             raise ValueError("org_ir executor only supports ir")
+    elif executor == "org_idle":
+        if configuration.get("objective_mode") not in {
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError("org_idle supports ir_im_is and ir_im_isq")
+        cap_rule = configuration.get("participant_idle_cap_rule", "none")
+        if cap_rule not in {"none", "interpolated_bounds"}:
+            raise ValueError("org_idle has an invalid participant idle cap rule")
+        try:
+            alpha = Fraction(
+                str(configuration.get("participant_idle_cap_alpha", "1/2"))
+            )
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError("org_idle has an invalid cap alpha") from exc
+        if not 0 <= alpha <= 1:
+            raise ValueError("org_idle participant idle cap alpha lies outside [0,1]")
 
 
 def _balanced_instance_order(
@@ -674,6 +716,10 @@ def _configuration_command(
             configuration.get("compact_encoding", "reference"),
             "--collision-amo",
             configuration.get("collision_amo", "pairwise"),
+            "--participant-idle-cap-rule",
+            configuration.get("participant_idle_cap_rule", "none"),
+            "--participant-idle-cap-alpha",
+            str(configuration.get("participant_idle_cap_alpha", "1/2")),
             "--domain-mode",
             configuration["domain_mode"],
             "--domain-filter-graph",
@@ -742,7 +788,7 @@ def _configuration_command(
                 ]
             )
         return command, detailed
-    if executor == "org_ir":
+    if executor in {"org_ir", "org_idle"}:
         if uwrmaxsat_binary is None:
             raise FileNotFoundError("UWrMaxSAT is required by ORG IR")
         command = [
@@ -762,6 +808,17 @@ def _configuration_command(
             "--excel-dir",
             str(temp_dir / "excel"),
         ]
+        if executor == "org_idle":
+            command.extend(
+                [
+                    "--objective-mode",
+                    configuration["objective_mode"],
+                    "--participant-idle-cap-rule",
+                    configuration.get("participant_idle_cap_rule", "none"),
+                    "--participant-idle-cap-alpha",
+                    str(configuration.get("participant_idle_cap_alpha", "1/2")),
+                ]
+            )
         return command, detailed
     raise AssertionError(executor)
 
@@ -882,6 +939,22 @@ def run_job(
                 ),
             }
     after = _machine_snapshot()
+    row.setdefault(
+        "compact_encoding",
+        job["configuration"].get("compact_encoding", "reference"),
+    )
+    row.setdefault(
+        "collision_amo",
+        job["configuration"].get("collision_amo", "pairwise"),
+    )
+    row.setdefault(
+        "participant_idle_cap_rule",
+        job["configuration"].get("participant_idle_cap_rule", "none"),
+    )
+    row.setdefault(
+        "participant_idle_cap_alpha",
+        str(job["configuration"].get("participant_idle_cap_alpha", "1/2")),
+    )
     row.update(
         {
             "campaign_id": campaign_id,
@@ -1042,7 +1115,7 @@ def main(argv: list[str] | None = None) -> int:
 
     needs_uwr = any(
         (
-            job["configuration"]["executor"] == "org_ir"
+            job["configuration"]["executor"] in {"org_ir", "org_idle"}
             or (
                 job["configuration"]["executor"] == "org_bg_d2"
                 and job["configuration"].get("backend", "uwrmaxsat")

@@ -5,6 +5,7 @@ import csv
 import json
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +73,7 @@ def waiting_metric_errors(row: dict[str, Any]) -> list[str]:
             return ["missing or invalid participant idle costs"]
         total, maximum, squared = sum(values), max(values), sum(v * v for v in values)
         objective_mode = row["objective_mode"]
-        if objective_mode == "ir_im_is":
+        if objective_mode in {"ir_im_is", "ir_im_isq"}:
             participants_raw = row["objective_participants"]
             participants = [
                 int(value)
@@ -92,7 +93,11 @@ def waiting_metric_errors(row: dict[str, Any]) -> list[str]:
                 else 0
             )
             maximum = max(pstar_values, default=0)
-            expected = (idle_range, maximum, total)
+            expected = (
+                (idle_range, maximum, squared)
+                if objective_mode == "ir_im_isq"
+                else (idle_range, maximum, total)
+            )
         else:
             expected = {
                 "is": (total,),
@@ -105,8 +110,22 @@ def waiting_metric_errors(row: dict[str, Any]) -> list[str]:
                              ("squared_internal_idle_slots", squared)):
             if int(row[field]) != value:
                 errors.append(f"{field} disagrees with participant costs")
-        if objective_mode == "ir_im_is" and int(row["idle_range_pstar"]) != idle_range:
+        if objective_mode in {"ir_im_is", "ir_im_isq"} and int(row["idle_range_pstar"]) != idle_range:
             errors.append("idle_range_pstar disagrees with objective-participant costs")
+        if row.get("participant_idle_cap_rule", "none") == "interpolated_bounds":
+            raw_caps = row["participant_idle_caps"]
+            caps = [
+                int(value)
+                for value in (
+                    raw_caps
+                    if isinstance(raw_caps, (tuple, list))
+                    else str(raw_caps).split(",")
+                )
+            ]
+            if len(caps) != len(values):
+                errors.append("participant idle cap vector has wrong length")
+            elif any(value > cap for value, cap in zip(values, caps)):
+                errors.append("participant idle cap is violated")
         if _objective_vector(row) != expected:
             errors.append("waiting objective vector disagrees with participant costs")
         proven = _objective_vector({"objective_vector": row.get("proven_objective_vector")})
@@ -306,6 +325,25 @@ def validate_campaign(
             observed_collision_amo
         ) != str(expected_collision_amo):
             errors.append(f"{run_key}: collision_amo mismatch")
+        expected_cap_rule = job["configuration"].get(
+            "participant_idle_cap_rule", "none"
+        )
+        expected_cap_alpha = str(
+            job["configuration"].get("participant_idle_cap_alpha", "1/2")
+        )
+        if is_shared_boolean_model and str(
+            row.get("participant_idle_cap_rule", "none")
+        ) != expected_cap_rule:
+            errors.append(f"{run_key}: participant_idle_cap_rule mismatch")
+        if is_shared_boolean_model and expected_cap_rule != "none":
+            try:
+                observed_alpha = Fraction(
+                    str(row.get("participant_idle_cap_alpha"))
+                )
+            except (ValueError, ZeroDivisionError):
+                observed_alpha = None
+            if observed_alpha != Fraction(expected_cap_alpha):
+                errors.append(f"{run_key}: participant_idle_cap_alpha mismatch")
         if (
             is_shared_boolean_model
             and expected_collision_amo == "adaptive_commander"
@@ -353,14 +391,14 @@ def validate_campaign(
                 errors.append(f"{run_key}: OPTIMAL row has validation errors")
             if _truthy(row.get("runtime_censored")):
                 errors.append(f"{run_key}: OPTIMAL row is marked censored")
-        if expected_mode in {"is", "isq", "im_is", "ir_im_is"} and status == "OPTIMAL":
+        if expected_mode in {"is", "isq", "im_is", "ir_im_is", "ir_im_isq"} and status == "OPTIMAL":
             errors.extend(f"{run_key}: {error}" for error in waiting_metric_errors(row))
         if status == "TIMEOUT" and not _truthy(row.get("runtime_censored")):
             errors.append(f"{run_key}: TIMEOUT row is not marked censored")
         row_uwr_hash = str(row.get("solver_binary_sha256", ""))
         configuration = job["configuration"]
         requires_uwr = (
-            configuration.get("executor") == "org_ir"
+            configuration.get("executor") in {"org_ir", "org_idle"}
             or (
                 configuration.get("executor") == "org_bg_d2"
                 and configuration.get("backend", "uwrmaxsat") == "uwrmaxsat"
@@ -383,13 +421,15 @@ def validate_campaign(
     # repetition must agree. Timeouts are omitted, but OPTIMAL versus UNSAT is
     # always an inconsistency.
     agreement_groups: dict[
-        tuple[str, str, str], list[dict[str, Any]]
+        tuple[str, str, str, str, str], list[dict[str, Any]]
     ] = defaultdict(list)
     for row in rows:
         agreement_groups[
             (
                 str(row.get("instance_content_id", "")),
                 str(row.get("objective_mode", "")),
+                str(row.get("participant_idle_cap_rule", "none")),
+                str(row.get("participant_idle_cap_alpha", "1/2")),
                 str(row.get("repetition", "")),
             )
         ].append(row)
@@ -433,7 +473,7 @@ def validate_campaign(
             row.get("status")
             for row in group_rows
             if row.get("objective_mode")
-            in {"ir", "ir_is", "ir_im_is", "is", "isq", "im_is"}
+            in {"ir", "ir_is", "ir_im_is", "ir_im_isq", "is", "isq", "im_is"}
             and row.get("status") in {"OPTIMAL", "UNSAT"}
         }
         bg_statuses = {

@@ -1,0 +1,65 @@
+{
+  "description": "Deferred optional study, excluded from the baseline comparison. Participant idle-cap sensitivity on compact C+D+F.",
+  "blocks": [
+    {
+      "id": "compact_participant_cap_sensitivity",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_im_is",
+          "participant_idle_cap_rule": "interpolated_bounds",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "compact_cdf_cap_alpha_50",
+          "participant_idle_cap_alpha": "1/2"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_im_is",
+          "participant_idle_cap_rule": "interpolated_bounds",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "compact_cdf_cap_alpha_75",
+          "participant_idle_cap_alpha": "3/4"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_im_is",
+          "participant_idle_cap_rule": "interpolated_bounds",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "compact_cdf_cap_alpha_100",
+          "participant_idle_cap_alpha": "1"
+        }
+      ]
+    }
+  ]
+}

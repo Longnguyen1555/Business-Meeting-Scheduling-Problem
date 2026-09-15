@@ -4,6 +4,7 @@ import re
 import time
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from typing import Literal
 
@@ -21,6 +22,7 @@ ObjectiveMode = Literal[
     "bg_d2",
     "ir_is",
     "ir_im_is",
+    "ir_im_isq",
     "bg_ir_is",
     "is",
     "isq",
@@ -47,6 +49,7 @@ VALID_OBJECTIVE_MODES = {
     "bg_d2",
     "ir_is",
     "ir_im_is",
+    "ir_im_isq",
     "bg_ir_is",
     "is",
     "isq",
@@ -61,6 +64,7 @@ VALID_COMPACT_ENCODINGS = {
     "optimized",
 }
 VALID_COLLISION_AMO_ENCODINGS = {"pairwise", "adaptive_commander"}
+VALID_PARTICIPANT_IDLE_CAP_RULES = {"none", "interpolated_bounds"}
 
 # The crossover is exact for the implemented encodings: pairwise uses
 # n(n-1)/2 clauses, whereas a group-size-four commander AMO first improves
@@ -324,6 +328,13 @@ class B2BModelArtifacts:
     collision_amo_commander_variable_count: int
     collision_amo_clause_count: int
     collision_amo_max_group_size: int
+    participant_idle_cap_rule: str
+    participant_idle_cap_alpha: str
+    participant_idle_lower_bounds: tuple[int, ...]
+    participant_idle_upper_bounds: tuple[int, ...]
+    participant_idle_caps: tuple[int, ...]
+    participant_idle_bounds_feasible: bool
+    participant_idle_cap_clause_count: int
 
 # ---------------------------------------------------------------------------
 # MiniZinc .dzn parser
@@ -638,6 +649,91 @@ def _has_full_slot_matching(
     return all(augment(meeting, set()) for meeting in remaining)
 
 
+def compute_participant_idle_bounds(
+    inst: B2BInstance,
+) -> tuple[tuple[int, ...], tuple[int, ...], bool]:
+    """Return reproducible unary-domain bounds ``LB_p`` and ``UB_p`` for idle.
+
+    The bounds deliberately use only the original unary domains (session,
+    fixed meetings, and participant availability), so Full and Reduced models
+    receive identical caps. ``LB_p`` is the shortest interval in which the
+    participant's meetings admit distinct eligible slots. ``UB_p`` spans the
+    earliest and latest eligible slots. Inter-participant table conflicts and
+    precedences are excluded from this bound calculation.
+    """
+
+    domains = [
+        set(original_eligible_slots(inst, meeting))
+        for meeting in range(inst.n_meetings)
+    ]
+    lower: list[int] = []
+    upper: list[int] = []
+    feasible = True
+
+    for meetings in inst.meetings_by_business:
+        count = len(meetings)
+        if count <= 1:
+            lower.append(0)
+            upper.append(0)
+            continue
+
+        union = set().union(*(domains[meeting] for meeting in meetings))
+        participant_feasible = bool(union) and _has_full_slot_matching(
+            meetings, domains
+        )
+        if not participant_feasible:
+            lower.append(0)
+            upper.append(0)
+            feasible = False
+            continue
+
+        upper_bound = max(0, max(union) - min(union) + 1 - count)
+        lower_bound: int | None = None
+        for width in range(count, inst.n_total_slots + 1):
+            for left in range(0, inst.n_total_slots - width + 1):
+                right = left + width - 1
+                restricted = list(domains)
+                restricted = [set(values) for values in restricted]
+                for meeting in meetings:
+                    restricted[meeting].intersection_update(range(left, right + 1))
+                if _has_full_slot_matching(meetings, restricted):
+                    lower_bound = width - count
+                    break
+            if lower_bound is not None:
+                break
+
+        if lower_bound is None:
+            lower.append(0)
+            upper.append(upper_bound)
+            feasible = False
+        else:
+            lower.append(lower_bound)
+            upper.append(upper_bound)
+
+    return tuple(lower), tuple(upper), feasible
+
+
+def interpolate_participant_idle_caps(
+    lower_bounds: tuple[int, ...],
+    upper_bounds: tuple[int, ...],
+    alpha: Fraction | str | int | float = Fraction(1, 2),
+) -> tuple[int, ...]:
+    """Compute ``floor(LB_p + alpha (UB_p-LB_p))`` exactly."""
+
+    fraction = alpha if isinstance(alpha, Fraction) else Fraction(str(alpha))
+    if fraction < 0 or fraction > 1:
+        raise ValueError("participant idle cap alpha must lie in [0, 1]")
+    if len(lower_bounds) != len(upper_bounds):
+        raise ValueError("participant idle lower/upper bound lengths differ")
+    caps: list[int] = []
+    for lower, upper in zip(lower_bounds, upper_bounds):
+        if lower < 0 or upper < lower:
+            raise ValueError(f"invalid participant idle bounds [{lower}, {upper}]")
+        value = Fraction(lower) + fraction * (upper - lower)
+        caps.append(value.numerator // value.denominator)
+    return tuple(caps)
+
+
 def _propagate_distance_precedences(
     domains: list[set[int]],
     distances_by_post: list[dict[int, int]],
@@ -894,6 +990,11 @@ def compute_solution_stats(
             max(objective_values, default=0),
             total_idle,
         ),
+        "ir_im_isq": (
+            objective_gap,
+            max(objective_values, default=0),
+            sum(value * value for value in objective_values),
+        ),
         "bg_ir_is": (total_break_groups, objective_gap, total_idle),
         "is": (total_idle,),
         "isq": (sum(value * value for value in objective_values),),
@@ -1078,6 +1179,8 @@ class B2BSATModel:
         objective_mode: ObjectiveMode = "ir",
         compact_encoding: CompactEncoding = "reference",
         collision_amo_encoding: CollisionAMOEncoding = "pairwise",
+        participant_idle_cap_rule: str = "none",
+        participant_idle_cap_alpha: Fraction | str | int | float = "1/2",
     ) -> None:
         if encoding_variant not in VALID_ENCODING_VARIANTS:
             raise ValueError(f"Unknown encoding_variant={encoding_variant!r}")
@@ -1096,6 +1199,22 @@ class B2BSATModel:
                 "Unknown collision_amo_encoding="
                 f"{collision_amo_encoding!r}"
             )
+        if participant_idle_cap_rule not in VALID_PARTICIPANT_IDLE_CAP_RULES:
+            raise ValueError(
+                "Unknown participant_idle_cap_rule="
+                f"{participant_idle_cap_rule!r}"
+            )
+        if participant_idle_cap_rule != "none" and objective_mode not in {
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError(
+                "participant idle caps are defined only for ir_im_is and "
+                "ir_im_isq"
+            )
+        cap_alpha = Fraction(str(participant_idle_cap_alpha))
+        if cap_alpha < 0 or cap_alpha > 1:
+            raise ValueError("participant idle cap alpha must lie in [0, 1]")
 
         (
             resolved_precedence_encoding,
@@ -1124,6 +1243,23 @@ class B2BSATModel:
             compact_encoding
         ]
         self.collision_amo_encoding = collision_amo_encoding
+        self.participant_idle_cap_rule = participant_idle_cap_rule
+        self.participant_idle_cap_alpha = cap_alpha
+        (
+            self.participant_idle_lower_bounds,
+            self.participant_idle_upper_bounds,
+            self.participant_idle_bounds_feasible,
+        ) = compute_participant_idle_bounds(inst)
+        self.participant_idle_caps = (
+            interpolate_participant_idle_caps(
+                self.participant_idle_lower_bounds,
+                self.participant_idle_upper_bounds,
+                cap_alpha,
+            )
+            if participant_idle_cap_rule == "interpolated_bounds"
+            else tuple(self.participant_idle_upper_bounds)
+        )
+        self.participant_idle_cap_clause_count = 0
         self.collision_amo_cutoff = COLLISION_AMO_COMMANDER_CUTOFF
         self.collision_amo_commander_group_size = (
             COLLISION_AMO_COMMANDER_GROUP_SIZE
@@ -1200,6 +1336,7 @@ class B2BSATModel:
         self._direct_range_soft_clauses: dict[
             str, list[tuple[int, ...]]
         ] = {}
+        self._range_max_lits: dict[str, list[int]] = {}
         self._collision_amo_pairwise_group_count = 0
         self._collision_amo_commander_group_count = 0
         self._collision_amo_commander_variable_count = 0
@@ -1566,6 +1703,9 @@ class B2BSATModel:
                 "ir_im_is": (
                     "exact_idle_span_threshold_range_then_maximum_then_sum"
                 ),
+                "ir_im_isq": (
+                    "exact_idle_span_threshold_range_then_maximum_then_squared_sum"
+                ),
                 "is": "exact_idle_span_threshold_sum",
                 "isq": "exact_idle_span_threshold_odd_weights",
                 "im_is": "exact_idle_maximum_threshold_then_sum",
@@ -1609,6 +1749,20 @@ class B2BSATModel:
             ),
             collision_amo_clause_count=self._collision_amo_clause_count,
             collision_amo_max_group_size=self._collision_amo_max_group_size,
+            participant_idle_cap_rule=self.participant_idle_cap_rule,
+            participant_idle_cap_alpha=(
+                f"{self.participant_idle_cap_alpha.numerator}/"
+                f"{self.participant_idle_cap_alpha.denominator}"
+            ),
+            participant_idle_lower_bounds=self.participant_idle_lower_bounds,
+            participant_idle_upper_bounds=self.participant_idle_upper_bounds,
+            participant_idle_caps=self.participant_idle_caps,
+            participant_idle_bounds_feasible=(
+                self.participant_idle_bounds_feasible
+            ),
+            participant_idle_cap_clause_count=(
+                self.participant_idle_cap_clause_count
+            ),
         )
         return self._artifacts
 
@@ -2362,6 +2516,7 @@ class B2BSATModel:
     ) -> list[int]:
         """Encode the exact max--min range of a unary threshold family."""
 
+        self._range_max_lits[family] = []
         if len(participants) <= 1:
             return []
 
@@ -2424,6 +2579,7 @@ class B2BSATModel:
             cnf.append([-max_lits[index], max_lits[index - 1]])
             cnf.append([-min_lits[index], min_lits[index - 1]])
 
+        self._range_max_lits[family] = max_lits
         return gap_lits
 
     def _build_objective_family(
@@ -2444,6 +2600,7 @@ class B2BSATModel:
             "ir",
             "ir_is",
             "ir_im_is",
+            "ir_im_isq",
             "bg_ir_is",
             "is",
             "isq",
@@ -2467,8 +2624,27 @@ class B2BSATModel:
         idle_range_lits: list[int] = []
         if needs_idle:
             idle_thresholds = self._add_span_break_thresholds(cnf)
-            if self.objective_mode in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}:
+            if self.objective_mode in {
+                "ir",
+                "ir_is",
+                "ir_im_is",
+                "ir_im_isq",
+                "bg_ir_is",
+            }:
                 idle_range_lits = self._add_gap_objective(cnf, idle_thresholds)
+
+            if self.participant_idle_cap_rule == "interpolated_bounds":
+                for participant in self.objective_participants:
+                    cap = self.participant_idle_caps[participant]
+                    thresholds = idle_thresholds[participant]
+                    if cap < len(thresholds):
+                        cnf.append([-thresholds[cap]])
+                        self.participant_idle_cap_clause_count += 1
+                alpha = self.participant_idle_cap_alpha
+                self.enabled_constraints.append(
+                    "participant idle caps I_p <= floor(LB_p + "
+                    f"{alpha.numerator}/{alpha.denominator}(UB_p-LB_p))"
+                )
 
         group_ends = [[] for _ in range(self.inst.n_business)]
         group_thresholds = [[] for _ in range(self.inst.n_business)]
@@ -2540,49 +2716,109 @@ class B2BSATModel:
                 penalty_weights=weights,
             ),)
             name = "sum_squared_internal_idle_slots"
-        elif self.objective_mode in {"im_is", "ir_im_is"}:
-            maximum_lits = []
+        elif self.objective_mode in {"im_is", "ir_im_is", "ir_im_isq"}:
             maximum_upper = max(
-                (
-                    len(idle_thresholds[participant])
-                    for participant in self.objective_participants
-                ),
+                (self.participant_idle_caps[participant]
+                 if self.participant_idle_cap_rule == "interpolated_bounds"
+                 else len(idle_thresholds[participant])
+                 for participant in self.objective_participants),
                 default=0,
             )
-            for level in range(maximum_upper):
-                inputs = [
-                    idle_thresholds[participant][level]
-                    for participant in self.objective_participants
-                    if level < len(idle_thresholds[participant])
-                ]
-                out = self.vpool.id(("idle_maximum", level + 1))
-                for literal in inputs:
-                    cnf.append([-literal, out])
-                cnf.append([-out] + inputs)
-                maximum_lits.append(out)
-            idle_sum_upper = len(idle_sum_lits)
-            maximum_weight = idle_sum_upper + 1
+            if self.objective_mode == "im_is":
+                maximum_lits = []
+                structural_maximum_upper = max(
+                    (len(idle_thresholds[participant])
+                     for participant in self.objective_participants),
+                    default=0,
+                )
+                for level in range(structural_maximum_upper):
+                    inputs = [
+                        idle_thresholds[participant][level]
+                        for participant in self.objective_participants
+                        if level < len(idle_thresholds[participant])
+                    ]
+                    out = self.vpool.id(("idle_maximum", level + 1))
+                    for literal in inputs:
+                        cnf.append([-literal, out])
+                    cnf.append([-out] + inputs)
+                    maximum_lits.append(out)
+            else:
+                # IR already needs exactly these max-threshold states. Sharing
+                # them avoids a duplicate maximum family in the compact model.
+                maximum_lits = list(self._range_max_lits.get("idle_slots", ()))
+                if not maximum_lits and self.objective_participants:
+                    structural_maximum_upper = max(
+                        (len(idle_thresholds[participant])
+                         for participant in self.objective_participants),
+                        default=0,
+                    )
+                    for level in range(structural_maximum_upper):
+                        inputs = [
+                            idle_thresholds[participant][level]
+                            for participant in self.objective_participants
+                            if level < len(idle_thresholds[participant])
+                        ]
+                        out = self.vpool.id(("idle_maximum", level + 1))
+                        for literal in inputs:
+                            cnf.append([-literal, out])
+                        cnf.append([-out] + inputs)
+                        maximum_lits.append(out)
+
+            idle_sum_upper = sum(
+                self.participant_idle_caps[participant]
+                if self.participant_idle_cap_rule == "interpolated_bounds"
+                else len(idle_thresholds[participant])
+                for participant in self.objective_participants
+            )
+            squared_idle_upper = sum(
+                (self.participant_idle_caps[participant]
+                 if self.participant_idle_cap_rule == "interpolated_bounds"
+                 else len(idle_thresholds[participant])) ** 2
+                for participant in self.objective_participants
+            )
+            last_tier_upper = (
+                squared_idle_upper
+                if self.objective_mode == "ir_im_isq"
+                else idle_sum_upper
+            )
+            maximum_weight = last_tier_upper + 1
             maximum_tier = ObjectiveTier(
                 "maximum_internal_idle_slots",
                 tuple(maximum_lits),
                 maximum_upper,
                 maximum_weight,
             )
-            idle_sum_tier = ObjectiveTier(
-                "total_internal_idle_slots",
-                tuple(idle_sum_lits),
-                idle_sum_upper,
-                1,
-            )
+            if self.objective_mode == "ir_im_isq":
+                squared_weights = tuple(
+                    2 * level - 1
+                    for participant in self.objective_participants
+                    for level in range(
+                        1, len(idle_thresholds[participant]) + 1
+                    )
+                )
+                last_tier = ObjectiveTier(
+                    "squared_internal_idle_slots",
+                    tuple(idle_sum_lits),
+                    squared_idle_upper,
+                    1,
+                    penalty_weights=squared_weights,
+                )
+            else:
+                last_tier = ObjectiveTier(
+                    "total_internal_idle_slots",
+                    tuple(idle_sum_lits),
+                    idle_sum_upper,
+                    1,
+                )
             if self.objective_mode == "im_is":
-                tiers = (maximum_tier, idle_sum_tier)
+                tiers = (maximum_tier, last_tier)
                 name = "lexicographic_maximum_idle_then_idle_sum"
             else:
                 # One unit of range must dominate the largest possible
                 # combined IM/IS cost. Since IM <= maximum_upper and
                 # IS <= idle_sum_upper, this product is exactly one larger
                 # than that lower-tier upper bound.
-                range_weight = (maximum_upper + 1) * (idle_sum_upper + 1)
+                range_weight = (maximum_upper + 1) * (last_tier_upper + 1)
                 tiers = (
                     ObjectiveTier(
                         "idle_range_pstar",
@@ -2592,9 +2828,13 @@ class B2BSATModel:
                         penalty_clauses=idle_range_soft_clauses,
                     ),
                     maximum_tier,
-                    idle_sum_tier,
+                    last_tier,
                 )
-                name = "lexicographic_idle_range_maximum_idle_then_idle_sum"
+                name = (
+                    "lexicographic_idle_range_maximum_idle_then_squared_idle_sum"
+                    if self.objective_mode == "ir_im_isq"
+                    else "lexicographic_idle_range_maximum_idle_then_idle_sum"
+                )
         elif self.objective_mode == "ir_is":
             primary_weight = len(idle_sum_lits) + 1
             tiers = (
@@ -2740,6 +2980,15 @@ class B2BSATModel:
                 "historical fairness-cap violation: "
                 f"Delta_G={stats.break_group_range}>2"
             )
+        if self.participant_idle_cap_rule == "interpolated_bounds":
+            for participant in self.objective_participants:
+                idle = stats.participant_breaks[participant]
+                cap = self.participant_idle_caps[participant]
+                if idle > cap:
+                    errors.append(
+                        "participant idle-cap violation: "
+                        f"p={participant + 1}, I_p={idle}, b_p={cap}"
+                    )
         return errors
 
     def compute_stats(self, assignment: list[int]) -> B2BSolutionStats:
@@ -2820,6 +3069,16 @@ def _main() -> None:
         choices=sorted(VALID_COLLISION_AMO_ENCODINGS),
         default="pairwise",
     )
+    parser.add_argument(
+        "--participant-idle-cap-rule",
+        choices=sorted(VALID_PARTICIPANT_IDLE_CAP_RULES),
+        default="none",
+    )
+    parser.add_argument(
+        "--participant-idle-cap-alpha",
+        default="1/2",
+        help="exact alpha in [0,1], e.g. 1/2, for interpolated_bounds",
+    )
     parser.add_argument("--write-cnf", type=Path)
     parser.add_argument("--write-wcnf", type=Path)
     parser.add_argument("--skip-meetingsx-validation", action="store_true")
@@ -2850,6 +3109,8 @@ def _main() -> None:
         objective_mode=args.objective_mode,
         compact_encoding=args.compact_encoding,
         collision_amo_encoding=args.collision_amo,
+        participant_idle_cap_rule=args.participant_idle_cap_rule,
+        participant_idle_cap_alpha=args.participant_idle_cap_alpha,
     )
     artifacts = model.build_base_cnf()
 
@@ -2897,6 +3158,11 @@ def _main() -> None:
         f"{','.join(artifacts.compact_encoding_features)}"
     )
     print(f"collision_amo={artifacts.collision_amo_encoding}")
+    print(f"participant_idle_cap_rule={artifacts.participant_idle_cap_rule}")
+    print(f"participant_idle_cap_alpha={artifacts.participant_idle_cap_alpha}")
+    print(f"participant_idle_lower_bounds={artifacts.participant_idle_lower_bounds}")
+    print(f"participant_idle_upper_bounds={artifacts.participant_idle_upper_bounds}")
+    print(f"participant_idle_caps={artifacts.participant_idle_caps}")
     print(
         "collision_amo_metrics="
         f"cutoff:{artifacts.collision_amo_cutoff}, "

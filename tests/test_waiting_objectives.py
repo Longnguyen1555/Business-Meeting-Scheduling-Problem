@@ -8,7 +8,12 @@ from pysat.solvers import Solver
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from B2B_Instance import B2BInstance, B2BSATModel, validate_schedule_assignment
+from B2B_Instance import (
+    B2BInstance,
+    B2BSATModel,
+    compute_participant_idle_bounds,
+    validate_schedule_assignment,
+)
 from Journal_Metrics import evaluate_journal_schedule
 from MaxSAT_Solver import B2BMaxSATSolver
 from Multiple_SAT import B2BMultipleSATSolver
@@ -38,6 +43,66 @@ def empty_pstar_instance():
         n_meetings_business=[1, 1], forbidden=[set(), set()],
         fixed=[None], precedences=[set()], instance_name="empty-pstar",
     )
+
+
+def flexible_single_pstar_instance():
+    return B2BInstance(
+        n_business=3, n_meetings=2, n_tables=1,
+        n_total_slots=5, n_morning_slots=2,
+        requested=[(0, 1, 3), (0, 2, 3)],
+        meetings_by_business=[[0, 1], [0], [1]],
+        n_meetings_business=[2, 1, 1], forbidden=[set(), set(), set()],
+        fixed=[None, None], precedences=[set(), set()],
+        instance_name="flexible-single-pstar",
+    )
+
+
+@pytest.mark.parametrize("mode", ["ir_im_is", "ir_im_isq"])
+def test_interpolated_participant_caps_are_exact_hard_constraints(mode):
+    inst = flexible_single_pstar_instance()
+    lower, upper, feasible = compute_participant_idle_bounds(inst)
+    assert feasible
+    assert lower == (0, 0, 0)
+    assert upper == (3, 0, 0)
+
+    model = B2BSATModel(
+        inst,
+        objective_mode=mode,
+        compact_encoding="optimized",
+        collision_amo_encoding="adaptive_commander",
+        participant_idle_cap_rule="interpolated_bounds",
+        participant_idle_cap_alpha="1/2",
+    )
+    artifacts = model.build_base_cnf()
+    assert artifacts.participant_idle_caps == (1, 0, 0)
+    assert artifacts.participant_idle_cap_clause_count == 1
+    assert tuple(tier.scalar_weight for tier in artifacts.objective_tiers) == (
+        4, 2, 1
+    )
+
+    with Solver(name="g3", bootstrap_with=artifacts.cnf.clauses) as solver:
+        assert solver.solve(assumptions=[model.x(0, 0), model.x(1, 2)])
+        sat_model = solver.get_model()
+        assert model.encoded_objective_vector(sat_model) == (0, 1, 1)
+        assert not solver.solve(assumptions=[model.x(0, 0), model.x(1, 4)])
+
+    uncapped = B2BSATModel(inst, objective_mode=mode)
+    uncapped_artifacts = uncapped.build_base_cnf()
+    with Solver(name="g3", bootstrap_with=uncapped_artifacts.cnf.clauses) as solver:
+        assert solver.solve(assumptions=[uncapped.x(0, 0), uncapped.x(1, 4)])
+
+    result = B2BMaxSATSolver(
+        inst,
+        backend="rc2",
+        objective_mode=mode,
+        compact_encoding="optimized",
+        collision_amo_encoding="adaptive_commander",
+        participant_idle_cap_rule="interpolated_bounds",
+        participant_idle_cap_alpha="1/2",
+    ).solve()
+    assert result["status"] == "OPTIMAL"
+    assert result["proven_objective_vector"] == (0, 0, 0)
+    assert not result["validation_errors"]
 
 
 @pytest.mark.parametrize("mode", ["is", "isq", "im_is"])
@@ -75,7 +140,9 @@ def test_every_feasible_assignment_has_exact_cost(mode, factory):
                     assert artifacts.objective_tiers[0].scalar_weight > artifacts.objective_tiers[1].upper_bound
 
 
-@pytest.mark.parametrize("mode", ["is", "isq", "im_is", "ir_im_is"])
+@pytest.mark.parametrize(
+    "mode", ["is", "isq", "im_is", "ir_im_is", "ir_im_isq"]
+)
 def test_optima_match_brute_force_across_domains_and_presets(mode):
     instances = [_fixed_positive_instance(), single_participant_instance(), empty_pstar_instance()]
     instances += [_generated_objective_instance(seed) for seed in range(15)]
@@ -114,12 +181,13 @@ def test_sat_maximum_then_sum_and_weighted_rejection(solver_class):
         _fairness_cap_infeasible_instance,
     ],
 )
-def test_ir_im_is_has_exact_three_tier_cost_for_every_assignment(factory):
+@pytest.mark.parametrize("mode", ["ir_im_is", "ir_im_isq"])
+def test_ir_im_is_has_exact_three_tier_cost_for_every_assignment(factory, mode):
     inst = factory()
     for compact in ("reference", "demand_driven", "optimized"):
         model = B2BSATModel(
             inst,
-            objective_mode="ir_im_is",
+            objective_mode=mode,
             compact_encoding=compact,
             collision_amo_encoding="adaptive_commander",
         )
@@ -145,7 +213,7 @@ def test_ir_im_is_has_exact_three_tier_cost_for_every_assignment(factory):
                 metrics = evaluate_journal_schedule(
                     inst,
                     assignment,
-                    objective_mode="ir_im_is",
+                    objective_mode=mode,
                 )
                 assert (
                     model.encoded_objective_vector(sat_model)
@@ -226,6 +294,21 @@ def test_validator_rejects_wrong_squared_and_maximum_costs():
     assert waiting_metric_errors(ir_im_is_row) == []
     assert waiting_metric_errors(dict(ir_im_is_row, idle_range_pstar=2))
     assert waiting_metric_errors(dict(ir_im_is_row, objective_vector="0,2,3"))
+
+    ir_im_isq_row = dict(
+        ir_im_is_row,
+        objective_mode="ir_im_isq",
+        objective_vector="1,2,5",
+        proven_objective_vector="1,2,5",
+        objective_tier_weights="20,6,1",
+        lexicographic_scalar_cost=37,
+        participant_idle_cap_rule="interpolated_bounds",
+        participant_idle_caps="0,2,1",
+    )
+    assert waiting_metric_errors(ir_im_isq_row) == []
+    assert waiting_metric_errors(
+        dict(ir_im_isq_row, participant_idle_caps="0,1,1")
+    )
 
 
 def test_all13_cli_jobs_resume_and_validate(tmp_path):

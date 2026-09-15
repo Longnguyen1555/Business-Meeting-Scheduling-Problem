@@ -22,10 +22,108 @@ from Journal_Experiment import (
     resolve_datasets,
 )
 from Merge_Journal_Shards import merge_shards
+from Select_Final_Tier_Experiment import build_final_tier_config
 from Validate_Journal_Run import validate_campaign
 
 
 class JournalExperimentTests(unittest.TestCase):
+    def test_balanced_objective_campaigns_and_final_tier_selection(self) -> None:
+        expected = {
+            "compact_objectives.json": 1890,
+            "compact_objectives_smoke.json": 30,
+            "idle_cap_sensitivity.json": 378,
+            "idle_cap_sensitivity_smoke.json": 6,
+            "main_objectives.json": 2268,
+            "main_objectives_smoke.json": 12,
+        }
+        plans = {}
+        for name, count in expected.items():
+            config = read_config(PROJECT_ROOT / "journal_configs" / name)
+            plan = build_plan(config, resolve_datasets(config))
+            self.assertEqual(plan["job_count"], count)
+            plans[name] = (config, plan)
+
+        main_config, main_plan = plans["main_objectives.json"]
+        main_ir_im_is_caps = {
+            job["planned_configuration_id"]: job["configuration"].get(
+                "participant_idle_cap_rule", "none"
+            )
+            for job in main_plan["jobs"]
+            if job["configuration"].get("objective_mode") == "ir_im_is"
+        }
+        self.assertEqual(
+            main_ir_im_is_caps,
+            {
+                "published_2022_ir_im_is": "none",
+                "compact_cdf_ir_im_is": "none",
+            },
+        )
+        compact_ir_im_is_caps = {
+            job["planned_configuration_id"]: job["configuration"].get(
+                "participant_idle_cap_rule", "none"
+            )
+            for job in plans["compact_objectives.json"][1]["jobs"]
+            if job["configuration"].get("objective_mode") == "ir_im_is"
+        }
+        self.assertEqual(set(compact_ir_im_is_caps.values()), {"none"})
+        deferred_cap_cells = {
+            (
+                job["configuration"].get("participant_idle_cap_rule"),
+                job["configuration"].get("participant_idle_cap_alpha"),
+            )
+            for job in plans["idle_cap_sensitivity.json"][1]["jobs"]
+        }
+        self.assertEqual(
+            deferred_cap_cells,
+            {
+                ("interpolated_bounds", "1/2"),
+                ("interpolated_bounds", "3/4"),
+                ("interpolated_bounds", "1"),
+            },
+        )
+        rows = [
+            {
+                "objective_mode": "ir_im_is",
+                "planned_configuration_id": "published_2022_ir_im_is",
+                "status": "TIMEOUT",
+                "runtime_seconds": "7200",
+                "peak_memory_mb": "100",
+            },
+            {
+                "objective_mode": "ir_im_is",
+                "planned_configuration_id": "compact_cdf_ir_im_is",
+                "status": "OPTIMAL",
+                "runtime_seconds": "10",
+                "peak_memory_mb": "120",
+            },
+        ]
+        final_config, report = build_final_tier_config(
+            main_config, main_plan, rows
+        )
+        self.assertEqual(
+            report["selected_configuration_id"],
+            "compact_cdf_ir_im_is",
+        )
+        self.assertEqual(final_config["expected_job_count"], 378)
+        final_cells = final_config["blocks"][0]["configurations"]
+        self.assertEqual(
+            {cell["objective_mode"] for cell in final_cells},
+            {"ir_im_isq"},
+        )
+        self.assertTrue(
+            final_config["selection_provenance"]["baseline_results_reused"]
+        )
+        self.assertTrue(
+            all(
+                cell.get("participant_idle_cap_rule", "none") == "none"
+                for cell in final_cells
+            )
+        )
+        final_plan = build_plan(
+            final_config, resolve_datasets(final_config)
+        )
+        self.assertEqual(final_plan["job_count"], 378)
+
     def test_all126_content_shards_are_balanced_and_pair_preserving(self) -> None:
         config = read_config(
             PROJECT_ROOT / "journal_configs" / "all126_first.json"

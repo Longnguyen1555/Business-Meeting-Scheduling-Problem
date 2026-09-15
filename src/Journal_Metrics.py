@@ -92,6 +92,11 @@ def evaluate_journal_schedule(
         "bg_d2": (group_sum,),
         "ir_is": (idle_range, idle_sum),
         "ir_im_is": (idle_range, max(pstar_values, default=0), idle_sum),
+        "ir_im_isq": (
+            idle_range,
+            max(pstar_values, default=0),
+            sum(value ** 2 for value in pstar_values),
+        ),
         "bg_ir_is": (group_sum, idle_range, idle_sum),
         "is": (idle_sum,),
         "isq": (sum(value ** 2 for value in pstar_values),),

@@ -1,0 +1,75 @@
+{
+  "description": "Primary 2-model x 3-objective journal comparison. All three objectives use their native feasible set without participant idle caps.",
+  "blocks": [
+    {
+      "id": "primary_two_models_three_objectives",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "published_2022_bg_d2",
+          "executor": "org_bg_d2",
+          "objective_mode": "bg_d2",
+          "backend": "uwrmaxsat"
+        },
+        {
+          "id": "compact_acf_bg_d2",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "published_2022_ir",
+          "executor": "org_ir",
+          "objective_mode": "ir"
+        },
+        {
+          "id": "compact_cdf_ir",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "published_2022_ir_im_is",
+          "executor": "org_idle",
+          "objective_mode": "ir_im_is"
+        },
+        {
+          "id": "compact_cdf_ir_im_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

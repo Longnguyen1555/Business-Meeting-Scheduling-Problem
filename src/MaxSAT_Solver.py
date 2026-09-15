@@ -169,6 +169,8 @@ class B2BMaxSATSolver:
         objective_mode: str = "ir",
         compact_encoding: str = "reference",
         collision_amo_encoding: str = "pairwise",
+        participant_idle_cap_rule: str = "none",
+        participant_idle_cap_alpha: str = "1/2",
         backend: MaxSATBackend | str | None = None,
         uwrmaxsat_bin: str | Path | None = None,
         uwrmaxsat_sha256: str | None = None,
@@ -265,6 +267,8 @@ class B2BMaxSATSolver:
             objective_mode=objective_mode,
             compact_encoding=compact_encoding,
             collision_amo_encoding=collision_amo_encoding,
+            participant_idle_cap_rule=participant_idle_cap_rule,
+            participant_idle_cap_alpha=participant_idle_cap_alpha,
         )
         self.artifacts = self.model.build_base_cnf()
 
@@ -472,6 +476,25 @@ class B2BMaxSATSolver:
                 self.artifacts.precedence_unique_suffix_cuts
             ),
             "enabled_constraints": self.artifacts.enabled_constraints,
+            "participant_idle_cap_rule": (
+                self.artifacts.participant_idle_cap_rule
+            ),
+            "participant_idle_cap_alpha": (
+                self.artifacts.participant_idle_cap_alpha
+            ),
+            "participant_idle_lower_bounds": (
+                self.artifacts.participant_idle_lower_bounds
+            ),
+            "participant_idle_upper_bounds": (
+                self.artifacts.participant_idle_upper_bounds
+            ),
+            "participant_idle_caps": self.artifacts.participant_idle_caps,
+            "participant_idle_bounds_feasible": (
+                self.artifacts.participant_idle_bounds_feasible
+            ),
+            "participant_idle_cap_clause_count": (
+                self.artifacts.participant_idle_cap_clause_count
+            ),
             "n_optimizer_calls": 1,
             "n_bound_encodings": 0,
             "optimizer_added_variables_peak": 0,
@@ -734,6 +757,8 @@ def solve_b2b(
     objective_mode: str = "ir",
     compact_encoding: str = "reference",
     collision_amo_encoding: str = "pairwise",
+    participant_idle_cap_rule: str = "none",
+    participant_idle_cap_alpha: str = "1/2",
     backend: MaxSATBackend | str | None = None,
     uwrmaxsat_bin: str | Path | None = None,
     uwrmaxsat_sha256: str | None = None,
@@ -750,6 +775,8 @@ def solve_b2b(
         objective_mode=objective_mode,
         compact_encoding=compact_encoding,
         collision_amo_encoding=collision_amo_encoding,
+        participant_idle_cap_rule=participant_idle_cap_rule,
+        participant_idle_cap_alpha=participant_idle_cap_alpha,
         backend=backend,
         uwrmaxsat_bin=uwrmaxsat_bin,
         uwrmaxsat_sha256=uwrmaxsat_sha256,

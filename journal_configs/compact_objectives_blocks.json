@@ -1,0 +1,257 @@
+{
+  "description": "Focused compact ablation for the three primary objectives. A/B/C/D are compact presets and F is adaptive collision AMO.",
+  "blocks": [
+    {
+      "id": "compact_bg_d2_ablation",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "bg_reference",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "bg_a",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "certified_bg",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "bg_c",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "demand_driven",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "bg_ac",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "bg_acf",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander"
+        }
+      ]
+    },
+    {
+      "id": "compact_ir_ablation",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "ir_reference",
+          "objective_mode": "ir",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "ir_c",
+          "objective_mode": "ir",
+          "compact_encoding": "demand_driven",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "ir_d",
+          "objective_mode": "ir",
+          "compact_encoding": "direct_range_soft",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "ir_cd",
+          "objective_mode": "ir",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "ir_cdf",
+          "objective_mode": "ir",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander"
+        }
+      ]
+    },
+    {
+      "id": "compact_ir_im_is_ablation",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "irimis_reference",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "irimis_c",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "demand_driven",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "irimis_d",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "direct_range_soft",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "irimis_cd",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "pairwise"
+        },
+        {
+          "executor": "main",
+          "solver": "maxsat",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical",
+          "id": "irimis_cdf",
+          "objective_mode": "ir_im_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander"
+        }
+      ]
+    }
+  ]
+}

@@ -165,6 +165,30 @@ run_campaign() {
   return "$validator_status"
 }
 
+run_campaign_config_path() {
+  local config_path=$1
+  local output_name=$2
+  shift 2
+  local output_dir="$OUTPUT_ROOT/$output_name"
+  local resume_args=()
+  if [[ -f "$output_dir/plan.json" ]]; then
+    resume_args+=(--resume)
+  fi
+  local runner_status=0
+  local validator_status=0
+  "${RUNNER[@]}" \
+    --config "$config_path" \
+    --output-dir "$output_dir" \
+    "${runner_common[@]}" \
+    "${resume_args[@]}" \
+    "$@" || runner_status=$?
+  validate_existing "$output_dir" || validator_status=$?
+  if [[ "$runner_status" -ne 0 ]]; then
+    return "$runner_status"
+  fi
+  return "$validator_status"
+}
+
 plan_campaign() {
   local config_name=$1
   local output_name=$2
@@ -284,6 +308,15 @@ case "$command" in
   compact-f-smoke)
     run_campaign compact_f_smoke compact-f-smoke
     ;;
+  compact-objectives-smoke)
+    run_campaign compact_objectives_smoke compact-objectives-smoke
+    ;;
+  cap-sensitivity-smoke)
+    run_campaign idle_cap_sensitivity_smoke idle-cap-sensitivity-smoke
+    ;;
+  main-objectives-smoke)
+    run_campaign main_objectives_smoke main-objectives-smoke
+    ;;
   all126-first-smoke)
     smoke_output=all126-first-smoke
     if [[ -n "$shard_label" ]]; then
@@ -320,6 +353,49 @@ case "$command" in
     run_warmup
     run_campaign compact_f_ablation compact-f-ablation
     ;;
+  compact-objectives)
+    run_warmup
+    compact_objectives_output=compact-objectives
+    if [[ -n "$shard_label" ]]; then
+      compact_objectives_output="$compact_objectives_output/$shard_label"
+    fi
+    run_campaign compact_objectives "$compact_objectives_output" "${shard_args[@]}"
+    ;;
+  cap-sensitivity)
+    run_warmup
+    cap_sensitivity_output=idle-cap-sensitivity
+    if [[ -n "$shard_label" ]]; then
+      cap_sensitivity_output="$cap_sensitivity_output/$shard_label"
+    fi
+    run_campaign idle_cap_sensitivity "$cap_sensitivity_output" "${shard_args[@]}"
+    ;;
+  main-objectives)
+    run_warmup
+    main_objectives_output=main-objectives
+    if [[ -n "$shard_label" ]]; then
+      main_objectives_output="$main_objectives_output/$shard_label"
+    fi
+    run_campaign main_objectives "$main_objectives_output" "${shard_args[@]}"
+    ;;
+  final-tier)
+    main_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives}
+    final_config="$OUTPUT_ROOT/final-tier-selected.json"
+    selector_args=()
+    if [[ "$ALLOW_DIRTY" == "1" ]]; then
+      selector_args+=(--allow-dirty)
+    fi
+    "$PYTHON" src/Select_Final_Tier_Experiment.py \
+      --main-output "$main_output" \
+      --main-config journal_configs/main_objectives.json \
+      --output-config "$final_config" \
+      "${selector_args[@]}"
+    run_warmup
+    final_tier_output=final-tier-selected
+    if [[ -n "$shard_label" ]]; then
+      final_tier_output="$final_tier_output/$shard_label"
+    fi
+    run_campaign_config_path "$final_config" "$final_tier_output" "${shard_args[@]}"
+    ;;
   generated-development)
     require_generated_data
     run_warmup
@@ -346,6 +422,8 @@ case "$command" in
     plan_campaign compact_ablation compact-ablation
     plan_campaign compact_f_smoke compact-f-smoke
     plan_campaign compact_f_ablation compact-f-ablation
+    plan_campaign compact_objectives compact-objectives
+    plan_campaign main_objectives main-objectives
     plan_campaign generated_core generated-development \
       --only-block e5_generated_development
     plan_campaign generated_core generated-heldout \
@@ -381,6 +459,9 @@ Commands:
   smoke                   pinned production solver 12-content gate
   compact-smoke           pinned A-D compact gate (168 runs)
   compact-f-smoke         pinned optimized-vs-F gate (72 runs)
+  compact-objectives-smoke  two-input A/C/D/F x objective gate (30 runs)
+  cap-sensitivity-smoke   deferred optional two-input cap-alpha gate (6 runs)
+  main-objectives-smoke   two-input 2-model x 3-objective gate (12 runs)
   all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
   all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
   all126-first            T1-T3 All-126, repetition 1 only (1,638 runs)
@@ -390,9 +471,13 @@ Commands:
   precedence              E4 2x2x2 ablation (3,360 runs)
   compact                 paired A-D All-126 ablation (5,292 runs)
   compact-f               paired F All-126 ablation (2,268 runs)
+  compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
+  cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
+  main-objectives         2 models x 3 objectives x 3 repetitions (2,268 runs)
+  final-tier              select by main IR-IM-IS, then run IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES
-  plan                    create and report all deterministic plans
+  plan                    create and report active uncapped deterministic plans
   all-development         features, coverage, correctness, smoke and pilot
   validate DIR            strictly validate one completed campaign
 

@@ -167,13 +167,14 @@ class MainPrecedenceFactorialTests(unittest.TestCase):
                 "bg_d2",
                 "ir_is",
                 "ir_im_is",
+                "ir_im_isq",
                 "bg_ir_is",
             )
         }
 
         self.assertEqual(
             len({row["configuration_id"] for row in metadata.values()}),
-            5,
+            6,
         )
         self.assertEqual(
             metadata["ir"]["configuration_label"],
@@ -190,6 +191,10 @@ class MainPrecedenceFactorialTests(unittest.TestCase):
         self.assertEqual(
             metadata["ir_im_is"]["configuration_label"],
             "R-SS-DC-ST-IRIMIS-UW-IC12P",
+        )
+        self.assertEqual(
+            metadata["ir_im_isq"]["configuration_label"],
+            "R-SS-DC-ST-IRIMISQ-UW-IC12P",
         )
 
     def test_non_ir_modes_reject_unimplemented_exact_baselines(self) -> None:

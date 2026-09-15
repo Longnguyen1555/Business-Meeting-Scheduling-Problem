@@ -13,6 +13,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,7 @@ OBJECTIVE_CODES = {
     "bg_d2": "BGD2",
     "ir_is": "IRIS",
     "ir_im_is": "IRIMIS",
+    "ir_im_isq": "IRIMISQ",
     "bg_ir_is": "BGIRIS",
     "is": "IS",
     "isq": "ISQ",
@@ -111,6 +113,7 @@ OBJECTIVE_NAMES = {
     "bg_d2": "BreakGroupsD2",
     "ir_is": "IdleRangeThenIdleSum",
     "ir_im_is": "IdleRangeThenMaximumIdleThenIdleSum",
+    "ir_im_isq": "IdleRangeThenMaximumIdleThenSquaredIdleSum",
     "bg_ir_is": "BreakGroupsThenIdleRangeThenIdleSum",
     "is": "IdleSum",
     "isq": "SquaredIdleSum",
@@ -121,6 +124,7 @@ OBJECTIVE_KEYS = {
     "bg_d2": "break_groups_d2",
     "ir_is": "idle_range_then_idle_sum",
     "ir_im_is": "idle_range_maximum_idle_sum",
+    "ir_im_isq": "idle_range_maximum_squared_idle_sum",
     "bg_ir_is": "break_groups_idle_range_idle_sum",
     "is": "idle_sum",
     "isq": "squared_idle_sum",
@@ -279,7 +283,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="ir",
         help=(
             "ir preserves conference behavior; bg_d2, ir_is, ir_im_is, "
-            "bg_ir_is, is, isq and im_is are journal Boolean-objective modes"
+            "ir_im_isq, bg_ir_is, is, isq and im_is are journal modes"
         ),
     )
     parser.add_argument(
@@ -302,6 +306,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "reference model; adaptive_commander uses pairwise below six "
             "literals and group-size-four commander AMO from six onward"
         ),
+    )
+    parser.add_argument(
+        "--participant-idle-cap-rule",
+        choices=["none", "interpolated_bounds"],
+        default="none",
+        help="optional per-participant idle cap for IR-IM-IS/ISQ",
+    )
+    parser.add_argument(
+        "--participant-idle-cap-alpha",
+        default="1/2",
+        help="exact alpha in [0,1], e.g. 1/2, for interpolated_bounds",
     )
     parser.add_argument(
         "--timeout",
@@ -348,6 +363,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--timeout must be positive")
     if args.threads <= 0:
         parser.error("--threads must be positive")
+    try:
+        cap_alpha = Fraction(args.participant_idle_cap_alpha)
+    except (ValueError, ZeroDivisionError):
+        parser.error("--participant-idle-cap-alpha must be a rational number")
+    if not 0 <= cap_alpha <= 1:
+        parser.error("--participant-idle-cap-alpha must lie in [0,1]")
+    if args.participant_idle_cap_rule != "none" and args.objective_mode not in {
+        "ir_im_is",
+        "ir_im_isq",
+    }:
+        parser.error(
+            "--participant-idle-cap-rule applies only to ir_im_is and "
+            "ir_im_isq"
+        )
     if args.precedence_mode is not None and (
         args.precedence_encoding is not None or args.precedence_graph is not None
     ):
@@ -376,7 +405,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ):
         parser.error("commercial exact baselines have no collision-AMO factor")
     if (
-        args.objective_mode in {"ir", "ir_is", "ir_im_is", "bg_ir_is"}
+        args.objective_mode in {
+            "ir", "ir_is", "ir_im_is", "ir_im_isq", "bg_ir_is"
+        }
         and args.compact_encoding in {"direct_range_soft", "optimized"}
         and args.solver in {"incremental", "multiple"}
     ):
@@ -384,8 +415,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"--compact-encoding {args.compact_encoding} is MaxSAT-only for "
             f"--objective-mode {args.objective_mode}"
         )
-    if args.objective_mode == "isq" and args.solver != "maxsat":
-        parser.error("--objective-mode isq requires --solver maxsat (weighted penalties)")
+    if args.objective_mode in {"isq", "ir_im_isq"} and args.solver != "maxsat":
+        parser.error(
+            f"--objective-mode {args.objective_mode} requires --solver maxsat "
+            "(weighted penalties)"
+        )
     return args
 
 
@@ -414,6 +448,8 @@ class RunConfiguration:
     objective_mode: str = "ir"
     compact_encoding: str = "reference"
     collision_amo: str = "pairwise"
+    participant_idle_cap_rule: str = "none"
+    participant_idle_cap_alpha: str = "1/2"
 
 
 def precedence_configurations(args: argparse.Namespace) -> list[tuple[str, str]]:
@@ -473,6 +509,8 @@ def configuration_metadata(
     objective_mode: str = "ir",
     compact_encoding: str = "reference",
     collision_amo: str = "pairwise",
+    participant_idle_cap_rule: str = "none",
+    participant_idle_cap_alpha: str = "1/2",
 ) -> dict[str, str]:
     """Return stable human and machine identifiers for one factor tuple."""
 
@@ -480,6 +518,14 @@ def configuration_metadata(
         raise ValueError(f"Unknown compact_encoding={compact_encoding!r}")
     if collision_amo not in VALID_COLLISION_AMO_ENCODINGS:
         raise ValueError(f"Unknown collision_amo={collision_amo!r}")
+    if participant_idle_cap_rule not in {"none", "interpolated_bounds"}:
+        raise ValueError(
+            f"Unknown participant_idle_cap_rule={participant_idle_cap_rule!r}"
+        )
+    cap_alpha = Fraction(participant_idle_cap_alpha)
+    canonical_cap_alpha = f"{cap_alpha.numerator}/{cap_alpha.denominator}"
+    if not 0 <= cap_alpha <= 1:
+        raise ValueError("participant_idle_cap_alpha must lie in [0,1]")
     if solver_name in EXACT_SOLVERS:
         if compact_encoding != "reference":
             raise ValueError(
@@ -638,6 +684,13 @@ def configuration_metadata(
         identifier_parts.append(f"c-{compact_encoding}")
     if collision_amo != "pairwise":
         identifier_parts.append(f"amo-{collision_amo}")
+    if participant_idle_cap_rule != "none":
+        identifier_parts.extend(
+            (
+                f"cap-{participant_idle_cap_rule}",
+                f"alpha-{cap_alpha.numerator}of{cap_alpha.denominator}",
+            )
+        )
     identifier = "__".join(identifier_parts)
     return {
         "configuration_label": label,
@@ -657,6 +710,8 @@ def configuration_metadata(
         "objective_code": OBJECTIVE_CODES[objective_mode],
         "compact_encoding": compact_encoding,
         "collision_amo": collision_amo,
+        "participant_idle_cap_rule": participant_idle_cap_rule,
+        "participant_idle_cap_alpha": canonical_cap_alpha,
         "implied_constraints_code": implied_code,
         "factor_m": "Full" if domain_mode == "full" else "Reduced",
         "factor_f": (
@@ -847,6 +902,7 @@ def solver_compact_configurations(
         "ir",
         "ir_is",
         "ir_im_is",
+        "ir_im_isq",
         "bg_ir_is",
     }:
         # These presets activate non-unit soft clauses for idle range, which
@@ -899,6 +955,8 @@ def benchmark_configurations(
                 objective_mode=args.objective_mode,
                 compact_encoding=compact_encoding,
                 collision_amo=collision_amo,
+                participant_idle_cap_rule=args.participant_idle_cap_rule,
+                participant_idle_cap_alpha=args.participant_idle_cap_alpha,
             )
             for domain_mode in domain_modes
             for domain_filter_graph in instance_domain_filter_configurations(
@@ -1233,6 +1291,23 @@ def _formula_metadata(
         "direct_range_soft_clause_count": (
             artifacts.direct_range_soft_clause_count
         ),
+        "participant_idle_cap_rule": artifacts.participant_idle_cap_rule,
+        "participant_idle_cap_alpha": artifacts.participant_idle_cap_alpha,
+        "participant_idle_lower_bounds": serialize_list(
+            artifacts.participant_idle_lower_bounds
+        ),
+        "participant_idle_upper_bounds": serialize_list(
+            artifacts.participant_idle_upper_bounds
+        ),
+        "participant_idle_caps": serialize_list(
+            artifacts.participant_idle_caps
+        ),
+        "participant_idle_bounds_feasible": (
+            artifacts.participant_idle_bounds_feasible
+        ),
+        "participant_idle_cap_clause_count": (
+            artifacts.participant_idle_cap_clause_count
+        ),
         "collision_amo": artifacts.collision_amo_encoding,
         "collision_amo_cutoff": artifacts.collision_amo_cutoff,
         "collision_amo_commander_group_size": (
@@ -1415,6 +1490,27 @@ def _result_payload(
         "direct_range_soft_clause_count": result.get(
             "direct_range_soft_clause_count", 0
         ),
+        "participant_idle_cap_rule": result.get(
+            "participant_idle_cap_rule", "none"
+        ),
+        "participant_idle_cap_alpha": result.get(
+            "participant_idle_cap_alpha", "1/2"
+        ),
+        "participant_idle_lower_bounds": serialize_list(
+            result.get("participant_idle_lower_bounds")
+        ),
+        "participant_idle_upper_bounds": serialize_list(
+            result.get("participant_idle_upper_bounds")
+        ),
+        "participant_idle_caps": serialize_list(
+            result.get("participant_idle_caps")
+        ),
+        "participant_idle_bounds_feasible": result.get(
+            "participant_idle_bounds_feasible"
+        ),
+        "participant_idle_cap_clause_count": result.get(
+            "participant_idle_cap_clause_count", 0
+        ),
         "collision_amo": result.get(
             "collision_amo_encoding",
             result.get("collision_amo", "pairwise"),
@@ -1541,6 +1637,8 @@ def _worker(
     objective_mode: str,
     compact_encoding: str,
     collision_amo: str,
+    participant_idle_cap_rule: str,
+    participant_idle_cap_alpha: str,
     maxsat_backend: str,
     uwrmaxsat_bin: str | None,
     uwrmaxsat_sha256: str | None,
@@ -1574,6 +1672,8 @@ def _worker(
                 "objective_mode": objective_mode,
                 "compact_encoding": compact_encoding,
                 "collision_amo_encoding": collision_amo,
+                "participant_idle_cap_rule": participant_idle_cap_rule,
+                "participant_idle_cap_alpha": participant_idle_cap_alpha,
             }
         if solver_name == "maxsat":
             solver_kwargs.update(
@@ -1669,6 +1769,8 @@ def _worker(
                 "objective_mode": objective_mode,
                 "compact_encoding": compact_encoding,
                 "collision_amo": collision_amo,
+                "participant_idle_cap_rule": participant_idle_cap_rule,
+                "participant_idle_cap_alpha": participant_idle_cap_alpha,
                 "runtime_seconds": round(time.perf_counter() - started, 6),
                 "runtime_scope": RUNTIME_SCOPE,
                 "runtime_censored": False,
@@ -1795,6 +1897,8 @@ def _terminal_payload(
     objective_mode: str,
     compact_encoding: str,
     collision_amo: str,
+    participant_idle_cap_rule: str,
+    participant_idle_cap_alpha: str,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -1814,6 +1918,8 @@ def _terminal_payload(
         "objective_mode": objective_mode,
         "compact_encoding": compact_encoding,
         "collision_amo": collision_amo,
+        "participant_idle_cap_rule": participant_idle_cap_rule,
+        "participant_idle_cap_alpha": participant_idle_cap_alpha,
         "runtime_seconds": round(runtime_seconds, 6),
         "runtime_scope": (
             "configured wall-clock cutoff measured by the controller; "
@@ -1856,6 +1962,8 @@ def run_with_timeout(
     objective_mode: str = "ir",
     compact_encoding: str = "reference",
     collision_amo: str = "pairwise",
+    participant_idle_cap_rule: str = "none",
+    participant_idle_cap_alpha: str = "1/2",
 ) -> dict[str, Any]:
     context = mp.get_context("spawn")
     output: mp.Queue[Any] = context.Queue()
@@ -1872,6 +1980,8 @@ def run_with_timeout(
             objective_mode,
             compact_encoding,
             collision_amo,
+            participant_idle_cap_rule,
+            participant_idle_cap_alpha,
             maxsat_backend,
             uwrmaxsat_bin,
             uwrmaxsat_sha256,
@@ -1922,6 +2032,8 @@ def run_with_timeout(
             objective_mode=objective_mode,
             compact_encoding=compact_encoding,
             collision_amo=collision_amo,
+            participant_idle_cap_rule=participant_idle_cap_rule,
+            participant_idle_cap_alpha=participant_idle_cap_alpha,
         )
     else:
         process.join()
@@ -1945,6 +2057,8 @@ def run_with_timeout(
                 objective_mode=objective_mode,
                 compact_encoding=compact_encoding,
                 collision_amo=collision_amo,
+                participant_idle_cap_rule=participant_idle_cap_rule,
+                participant_idle_cap_alpha=participant_idle_cap_alpha,
             )
             result["error_type"] = "NoWorkerPayload"
             result["error_message"] = "Worker returned no result"
@@ -1986,6 +2100,8 @@ def run_with_timeout(
             objective_mode=objective_mode,
             compact_encoding=compact_encoding,
             collision_amo=collision_amo,
+            participant_idle_cap_rule=participant_idle_cap_rule,
+            participant_idle_cap_alpha=participant_idle_cap_alpha,
         )
     )
     result.setdefault("formula_scope", FORMULA_SCOPE)
@@ -2376,6 +2492,8 @@ def main(argv: list[str] | None = None) -> int:
                 configuration.objective_mode,
                 configuration.compact_encoding,
                 configuration.collision_amo,
+                configuration.participant_idle_cap_rule,
+                configuration.participant_idle_cap_alpha,
             )
             result = {
                 **instance_result_metadata(instance),
