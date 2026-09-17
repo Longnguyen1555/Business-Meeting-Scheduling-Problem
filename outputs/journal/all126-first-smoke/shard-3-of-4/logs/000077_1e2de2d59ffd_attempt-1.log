@@ -1,0 +1,14 @@
+started_utc=2026-09-11T16:19:08+00:00
+command=/home/vudangducminh/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python -u /home/vudangducminh/Business-Meeting-Scheduling-Problem/src/Main.py --instance /home/vudangducminh/Business-Meeting-Scheduling-Problem/data_table03_origin/forum-13crafc.original.dzn --solver maxsat --objective-mode bg_d2 --compact-encoding reference --collision-amo pairwise --domain-mode full --domain-filter-graph distance_closure --precedence-encoding sparse_suffix --precedence-graph distance_closure --encoding-variant imp12+ --maxsat-backend uwrmaxsat --sat-backend cadical --timeout 300.0 --threads 1 --random-seed 0 --csv /home/vudangducminh/outputs/journal/all126-first-smoke/shard-3-of-4/work/cell-n849xl7y/aggregate.csv --long-csv /home/vudangducminh/outputs/journal/all126-first-smoke/shard-3-of-4/work/cell-n849xl7y/detailed.csv --no-excel --uwrmaxsat-bin /home/vudangducminh/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 84fbd879008c3b4f0c5122c8ae6ba51d97e86a4b40867db8cc063a5b2a50547d
+
+B2B benchmark: 1 run(s), objective_mode=bg_d2, compact_encoding=reference, collision_amo=pairwise
+Selected input paths: 1 (family=all, content_deduplicated=True)
+SAT/MaxSAT domain mode(s): full
+Reduced-domain filter graph(s): distance_closure
+MaxSAT backend: uwrmaxsat
+Instance forum-13crafc.original: 1 run(s)
+[1/1] forum-13crafc.original | full | maxsat | F=distance_closure | P=sparse_suffix | G=distance_closure | imp12+ | objective=bg_d2 | compact=reference | collision_amo=pairwise
+    SAT | objective=1 | time=4.873557s | config=F-SS-DC-ST-BGD2-UW-IC12P
+Detailed CSV: /home/vudangducminh/outputs/journal/all126-first-smoke/shard-3-of-4/work/cell-n849xl7y/detailed.csv
+Aggregate CSV: /home/vudangducminh/outputs/journal/all126-first-smoke/shard-3-of-4/work/cell-n849xl7y/aggregate.csv
+Completed with errors=0, timeouts=0.

@@ -11,15 +11,16 @@ from pysat.formula import CNF, IDPool, WCNF
 PrecedenceMode = Literal["traditional", "staircase"]
 PrecedenceEdgeMode = Literal["direct", "source-closure"]
 EncodingVariant = Literal["basic", "imp1", "imp2", "imp12", "imp12+"]
-ObjectiveMode = Literal["idle-range", "lexicographic", "lex-idlesum"]
+# This branch implements one objective: minimize IdleMax, then IdleSum.
+ObjectiveMode = Literal["im-is"]
 
 VALID_PRECEDENCE_MODES = {"traditional", "staircase"}
 VALID_PRECEDENCE_EDGE_MODES = {"direct", "source-closure"}
 VALID_ENCODING_VARIANTS = {"basic", "imp1", "imp2", "imp12", "imp12+"}
 # "lexicographic"  -> (IdleRange, IdleMax, IdleSum)
 # "lex-idlesum"    -> (IdleRange, IdleSum), i.e. no IdleMax level
-VALID_OBJECTIVE_MODES = {"idle-range", "lexicographic", "lex-idlesum"}
-LEXICOGRAPHIC_MODES = {"lexicographic", "lex-idlesum"}
+VALID_OBJECTIVE_MODES = {"im-is"}
+LEXICOGRAPHIC_MODES = {"im-is"}
 
 
 @dataclass(frozen=True)
@@ -514,7 +515,7 @@ class B2BSATModel:
         fairness_limit: int | None = None,
         precedence_mode: PrecedenceMode = "staircase",
         encoding_variant: EncodingVariant = "imp12+",
-        objective_mode: ObjectiveMode = "idle-range",
+        objective_mode: ObjectiveMode = "im-is",
         precedence_edge_mode: PrecedenceEdgeMode = "direct",
     ) -> None:
         if precedence_mode not in VALID_PRECEDENCE_MODES:
@@ -743,22 +744,19 @@ class B2BSATModel:
         )
         # The number of true gap literals is exactly the range of B(p) over P*,
         # where P* contains participants with at least two meetings.
-        objective_lits = gap_lits
+        # The primary tier is IdleMax: maxBreakSlots[k] <-> OR_{p in P*} theta(p,k)
+        # is monotone in k, so the count of true literals is exactly max_p B(p).
+        # IdleRange literals are still built (gap_lits) but are not optimized.
+        objective_lits = [
+            self.max_break(level)
+            for level in range(1, len(gap_lits) + 1)
+        ]
         secondary_objective_lits = [
             lit
             for participant_lits in hole_lits
             for lit in participant_lits
         ]
-        objective_name = {
-            "idle-range": "internal_idle_slot_range_pstar",
-            "lexicographic": (
-                "lexicographic_internal_idle_range_pstar"
-                "_then_idle_max_then_idle_sum"
-            ),
-            "lex-idlesum": (
-                "lexicographic_internal_idle_range_pstar_then_idle_sum"
-            ),
-        }[self.objective_mode]
+        objective_name = "lexicographic_idle_max_then_idle_sum"
 
         self._artifacts = B2BModelArtifacts(
             cnf=cnf,
@@ -1298,17 +1296,17 @@ class B2BSATModel:
     ) -> list[str]:
         """Cross-check CNF/WCNF objective semantics against decoded schedule stats."""
         encoded = self.encoded_objective_value(sat_model)
-        expected = stats.fairness_gap
+        expected = stats.max_internal_idle_slots
         errors: list[str] = []
         if encoded != expected:
             errors.append(
                 "objective encoding mismatch: "
-                f"encoded gap={encoded}, schedule gap={expected}"
+                f"encoded IdleMax={encoded}, schedule IdleMax={expected}"
             )
         if imposed_bound is not None and encoded > imposed_bound:
             errors.append(
                 "objective-bound violation: "
-                f"encoded gap={encoded}, imposed bound={imposed_bound}"
+                f"encoded IdleMax={encoded}, imposed bound={imposed_bound}"
             )
         if solver_cost is not None and solver_cost != encoded:
             errors.append(

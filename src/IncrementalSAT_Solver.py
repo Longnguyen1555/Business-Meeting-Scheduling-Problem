@@ -36,20 +36,22 @@ def _new_solver(clauses: list[list[int]], preferred: str = "cadical"):
 
 
 class B2BIncrementalSATSolver:
-    """Incremental SAT optimization of the internal-idle-slot range over P*.
+    """Incremental SAT lexicographic optimization in IdleRange, IdleMax, IdleSum order.
 
     For participant p, B(p) is the number of idle slots strictly between p's
-    first and last meetings. The optimized objective is::
+    first and last meetings, and P* contains the participants with at least two
+    meetings. The three tiers are
 
-        max_{p in P*} B(p) - min_{p in P*} B(p),
+        phase 1  IR = max_{p in P*} B(p) - min_{p in P*} B(p)
+        phase 2  IM = max_{p in P*} B(p)
+        phase 3  IS = sum_{p in P*} B(p)
 
-    where P* contains participants with at least two meetings.
-
-    Within each optimization phase, one SAT solver is retained while an
-    incremental totalizer imposes candidate upper bounds through assumptions.
-    The optional second phase fixes the range optimum and minimizes the
-    bottleneck max_{p in P*} B(p). Note this differs from MaxSAT_Solver, whose
-    second phase minimizes the sum of B(p).
+    Within each phase, one SAT solver is retained while an incremental totalizer
+    imposes candidate upper bounds through assumptions. Between phases, the
+    proven optimum is folded into ``_hard_clauses`` as a cardinality bound, so
+    the next phase bootstraps a solver from a formula that already pins the tiers
+    above it; nothing is re-encoded per phase. Note MaxSAT_Solver puts IM first
+    instead, in a single weighted RC2 call.
     """
 
     def __init__(
@@ -59,7 +61,7 @@ class B2BIncrementalSATSolver:
         precedence_mode: str = "traditional",
         encoding_variant: str = "imp12+",
         solver_name: str = "cadical",
-        objective_mode: str = "idle-range",
+        objective_mode: str = "im-is",
         precedence_edge_mode: str = "direct",
     ) -> None:
         self.inst = _ensure_instance(instance_or_path)
@@ -73,6 +75,38 @@ class B2BIncrementalSATSolver:
         )
         self.artifacts = self.model.build_base_cnf()
         self.solver_name = solver_name
+        # Hard clause set carried between phases. Phase 1 starts from the base
+        # CNF; each proven optimum is appended to it as a cardinality bound.
+        self._hard_clauses: list[list[int]] = list(self.artifacts.cnf.clauses)
+        self._hard_top = self.artifacts.n_vars
+
+    # Objective tiers ---------------------------------------------------
+
+    @property
+    def _range_lits(self) -> list[int]:
+        """IR tier: true count is max_{p in P*} B(p) - min_{p in P*} B(p)."""
+        return self.artifacts.fairness_gap_lits
+
+    @property
+    def _max_lits(self) -> list[int]:
+        """IM tier: true count is max_{p in P*} B(p)."""
+        return self.artifacts.objective_lits
+
+    def _pin_tier(self, lits: list[int], optimum: int) -> None:
+        """Append ``sum(lits) <= optimum`` to the hard clauses for later phases.
+
+        Encoded once, when the tier's optimum is proven, rather than rebuilt by
+        every phase below it. ``_hard_top`` keeps the auxiliary variables of
+        successive bounds disjoint. It may overlap the ids a phase's totalizer
+        allocated, which is harmless: totalizer clauses stay inside the solver
+        that phase discards and never enter ``_hard_clauses``.
+        """
+        clauses, self._hard_top = self._cardinality_bound(
+            lits,
+            optimum,
+            self._hard_top,
+        )
+        self._hard_clauses.extend(clauses)
 
     def _pack_result(
         self,
@@ -91,7 +125,9 @@ class B2BIncrementalSATSolver:
             "precedence_mode": self.artifacts.precedence_mode,
             "precedence_edge_mode": self.artifacts.precedence_edge_mode,
             "encoding_variant": self.artifacts.encoding_variant,
-            "objective": self.artifacts.objective_name,
+            # artifacts.objective_name describes the MaxSAT tier order (IM
+            # first); this solver leads with IdleRange instead.
+            "objective": "lexicographic_idle_range_then_idle_max_then_idle_sum",
             "objective_mode": self.artifacts.objective_mode,
             "objective_participant_count": len(
                 self.artifacts.objective_participants
@@ -103,11 +139,9 @@ class B2BIncrementalSATSolver:
                 stats.fairness_gap if stats is not None else proven_optimum
             ),
             "proven_optimum": proven_optimum,
+            # secondary tier is IdleMax = max_p B(p).
             "secondary_objective_value": (
-                self._secondary_value(stats)
-                if stats is not None
-                and self.artifacts.objective_mode == "lexicographic"
-                else None
+                stats.max_internal_idle_slots if stats is not None else None
             ),
             "secondary_proven_optimum": secondary_optimum,
             "tertiary_objective_value": (
@@ -123,9 +157,9 @@ class B2BIncrementalSATSolver:
             "validation_errors": checks or [],
             "n_vars": self.artifacts.n_vars,
             "n_clauses": self.artifacts.n_clauses,
-            "n_objective_lits": len(self.artifacts.objective_lits),
-            "n_primary_objective_lits": len(self.artifacts.objective_lits),
-            "n_secondary_objective_lits": len(self._secondary_lits()),
+            "n_objective_lits": len(self._range_lits),
+            "n_primary_objective_lits": len(self._range_lits),
+            "n_secondary_objective_lits": len(self._max_lits),
             "precedence_direct_edges": self.artifacts.precedence_direct_edges,
             "precedence_source_added_edges": (
                 self.artifacts.precedence_source_added_edges
@@ -141,16 +175,25 @@ class B2BIncrementalSATSolver:
         self,
         sat_model: list[int],
         *,
-        imposed_bound: int | None = None,
+        range_bound: int | None = None,
+        max_bound: int | None = None,
     ) -> tuple[list[int], B2BSolutionStats, list[str]]:
+        """Decode a model and check both upper tiers against the schedule.
+
+        The encoding-vs-schedule checks always run; ``range_bound`` and
+        ``max_bound`` additionally assert the bound the current phase imposed.
+        """
         assignment = self.model.decode_assignment(sat_model)
         stats = self.model.compute_stats(assignment)
         checks = self.model.validate_assignment(assignment)
         checks.extend(
+            self._range_checks(sat_model, stats, imposed_bound=range_bound)
+        )
+        checks.extend(
             self.model.objective_consistency_errors(
                 sat_model,
                 stats,
-                imposed_bound=imposed_bound,
+                imposed_bound=max_bound,
             )
         )
         return assignment, stats, checks
@@ -203,42 +246,44 @@ class B2BIncrementalSATSolver:
             if model[abs(lit) - 1] * (1 if lit > 0 else -1) > 0
         )
 
-    def _secondary_lits(self) -> list[int]:
-        """Unary literals whose true count is max_{p in P*} I_p(S)."""
-        return self.model.max_break_lits()
-
-    def _secondary_value(self, stats: B2BSolutionStats) -> int:
-        """max_p I_p(S) read off the decoded schedule."""
-        return stats.max_internal_idle_slots
-
-    def _secondary_checks(
+    def _range_checks(
         self,
         sat_model: list[int],
         stats: B2BSolutionStats,
         *,
         imposed_bound: int | None = None,
     ) -> list[str]:
-        """Cross-check the encoded max against the decoded schedule."""
-        return self.model.secondary_max_consistency_errors(
-            sat_model,
-            stats,
-            imposed_bound=imposed_bound,
-        )
+        """Cross-check the encoded IdleRange against the decoded schedule."""
+        encoded = self._count_true(self._range_lits, sat_model)
+        errors: list[str] = []
+        if encoded != stats.fairness_gap:
+            errors.append(
+                "IdleRange encoding mismatch: "
+                f"encoded IR={encoded}, schedule IR={stats.fairness_gap}"
+            )
+        if imposed_bound is not None and encoded > imposed_bound:
+            errors.append(
+                f"IdleRange-bound violation: encoded IR={encoded}, "
+                f"bound={imposed_bound}"
+            )
+        return errors
 
     def _optimize_secondary(
         self,
-        primary_optimum: int,
-        primary_model: list[int] | None = None,
+        range_optimum: int,
+        range_model: list[int] | None = None,
         *,
         verbose: bool = False,
     ) -> tuple[list[int] | None, B2BSolutionStats | None, list[str], int | None]:
-        """Incrementally minimize max_p I_p(S) with the optimal range fixed as hard."""
-        primary_clauses, primary_top = self._cardinality_bound(
-            self.artifacts.objective_lits,
-            primary_optimum,
-            self.artifacts.n_vars,
-        )
-        phase2_base = [*self.artifacts.cnf.clauses, *primary_clauses]
+        """Minimize IdleMax with the proven IdleRange already hard.
+
+        ``_hard_clauses`` carries IR <= R* from phase 1, so this phase only has
+        to encode its own candidate bounds. With IR pinned at R*, minimizing
+        IdleMax also minimizes IdleMin = IM - R*, i.e. pulls the whole band of
+        B(p) values down; the proven pair (R*, M*) fixes IdleMin exactly, which
+        phase 3 uses as a derived bound.
+        """
+        phase2_base = self._hard_clauses
 
         with _new_solver(phase2_base, self.solver_name) as solver:
             if not solver.solve():
@@ -249,46 +294,44 @@ class B2BIncrementalSATSolver:
             initial_model = solver.get_model()
             best_assignment, best_stats, checks = self._evaluate_sat_model(
                 initial_model,
-                imposed_bound=primary_optimum,
+                range_bound=range_optimum,
             )
-            checks.extend(self._secondary_checks(initial_model, best_stats))
             if checks:
                 return best_assignment, best_stats, checks, None
 
-            secondary_lits = self._secondary_lits()
+            max_lits = self._max_lits
             best_sat_model = initial_model
-            best_max = self._count_true(secondary_lits, initial_model)
+            best_max = best_stats.max_internal_idle_slots
 
             # The phase-1 optimum model also satisfies phase2_base, so its own
-            # max_p I_p(S) is a valid upper bound. Keep whichever of the two is
-            # tighter: it caps the scan and shrinks the totalizer encoding.
-            if primary_model is not None:
-                primary_max = self._count_true(secondary_lits, primary_model)
-                if primary_max < best_max:
+            # max_p B(p) is a valid upper bound. Keep whichever of the two is
+            # tighter: it caps the search and shrinks the totalizer encoding.
+            if range_model is not None:
+                seeded_max = self._count_true(max_lits, range_model)
+                if seeded_max < best_max:
                     (
                         seeded_assignment,
                         seeded_stats,
                         seeded_checks,
                     ) = self._evaluate_sat_model(
-                        primary_model,
-                        imposed_bound=primary_optimum,
+                        range_model,
+                        range_bound=range_optimum,
                     )
                     if not seeded_checks:
                         best_assignment = seeded_assignment
                         best_stats = seeded_stats
-                        best_sat_model = primary_model
-                        best_max = primary_max
+                        best_sat_model = range_model
+                        best_max = seeded_max
 
-            # I_p(S) >= 0 for every p, so
-            #   max_p I_p(S) >= max_p I_p(S) - min_p I_p(S) = IdleRange,
-            # making the phase-1 optimum a valid lower bound on IdleMax. Scan
-            # levels upward from there: the first satisfiable level IS the
-            # optimum, so no bound above it is ever probed. The scan stops at
-            # the incumbent, which is guaranteed satisfiable, and never exceeds
-            # the number of threshold literals (a level the totalizer cannot
-            # represent, and which n_total_slots can otherwise overshoot).
-            level_cap = min(self.inst.n_total_slots, len(secondary_lits))
-            lower = max(0, min(primary_optimum, level_cap))
+            # B(p) >= 0 for every p, so
+            #   max_p B(p) >= max_p B(p) - min_p B(p) = IdleRange,
+            # and IdleRange is pinned at R*, making R* a proven lower bound on
+            # IdleMax. The search stops at the incumbent, which is guaranteed
+            # satisfiable, and never exceeds the number of threshold literals (a
+            # level the totalizer cannot represent, and which n_total_slots can
+            # otherwise overshoot).
+            level_cap = min(self.inst.n_total_slots, len(max_lits))
+            lower = range_optimum
             upper = min(best_max, level_cap)
 
             if verbose:
@@ -302,9 +345,9 @@ class B2BIncrementalSATSolver:
 
             optimum = best_max
             with ITotalizer(
-                lits=secondary_lits,
+                lits=max_lits,
                 ubound=upper,
-                top_id=primary_top,
+                top_id=self._hard_top,
             ) as totalizer:
                 solver.append_formula(totalizer.cnf.clauses)
 
@@ -333,14 +376,8 @@ class B2BIncrementalSATSolver:
                         candidate_checks,
                     ) = self._evaluate_sat_model(
                         sat_model,
-                        imposed_bound=primary_optimum,
-                    )
-                    candidate_checks.extend(
-                        self._secondary_checks(
-                            sat_model,
-                            candidate_stats,
-                            imposed_bound=bound,
-                        )
+                        range_bound=range_optimum,
+                        max_bound=bound,
                     )
                     if not candidate_checks:
                         best_assignment = candidate_assignment
@@ -350,32 +387,33 @@ class B2BIncrementalSATSolver:
                 optimum = lo
 
         final_checks = self.model.validate_assignment(best_assignment)
-        if best_stats.fairness_gap != primary_optimum:
+        if best_stats.fairness_gap != range_optimum:
             final_checks.append(
                 "lexicographic primary mismatch: "
-                f"proven range={primary_optimum}, "
-                f"schedule range={best_stats.fairness_gap}"
+                f"proven IdleRange={range_optimum}, "
+                f"schedule IdleRange={best_stats.fairness_gap}"
             )
-        schedule_max = self._count_true(secondary_lits, best_sat_model)
+        schedule_max = self._count_true(max_lits, best_sat_model)
         if schedule_max != optimum:
             final_checks.append(
                 "lexicographic secondary mismatch: "
-                f"proven IdleMax={optimum}, "
-                f"schedule IdleMax={schedule_max}"
+                f"proven IdleMax={optimum}, schedule IdleMax={schedule_max}"
             )
         return best_assignment, best_stats, final_checks, optimum
 
     def _optimize_tertiary(
         self,
-        primary_optimum: int,
-        secondary_optimum: int | None,
+        range_optimum: int,
+        max_optimum: int | None,
         *,
         verbose: bool = False,
     ) -> tuple[list[int] | None, B2BSolutionStats | None, list[str], int | None]:
-        """Minimize IdleSum with the proven upper levels fixed as hard.
+        """Minimize IdleSum with the proven upper tiers already hard.
 
-        ``secondary_optimum`` is None in ``lex-idlesum`` mode, where the IdleMax
-        level is absent and only IdleRange is pinned.
+        ``_hard_clauses`` carries IR <= R* and IM <= M* from phases 1 and 2, so
+        this phase adds only the bounds it derives from that pair.
+        ``max_optimum`` is None when the IdleMax tier is skipped, leaving IR the
+        only pinned tier.
 
         Unlike phases 1 and 2 this uses solution-improving descent rather than a
         scan: each satisfiable bound yields a model whose actual sum is usually
@@ -384,34 +422,24 @@ class B2BIncrementalSATSolver:
         at the end. A scan or binary search over the 1334 IdleSum literals would
         instead pay for several expensive mid-range UNSAT proofs.
         """
-        primary_clauses, primary_top = self._cardinality_bound(
-            self.artifacts.objective_lits,
-            primary_optimum,
-            self.artifacts.n_vars,
-        )
         minimum_clauses: list[list[int]] = []
         bound_clauses: list[list[int]] = []
         sum_lower = 0
-        if secondary_optimum is None:
-            secondary_clauses, secondary_top = [], primary_top
-        else:
-            secondary_clauses, secondary_top = self._cardinality_bound(
-                self.model.max_break_lits(),
-                secondary_optimum,
-                primary_top,
-            )
-            # Both upper levels are now pinned exactly: the hard bounds give
-            # range <= R* and max <= M*, while R* and M* being proven optima give
-            # range >= R* and max >= M*. IdleRange = IdleMax - IdleMin then fixes
+        derived_top = self._hard_top
+        if max_optimum is not None:
+            # Both upper tiers are pinned exactly: the hard bounds give
+            # IR <= R* and IM <= M*, while R* and M* being proven optima give
+            # IR >= R* and IM >= M*. IR = IdleMax - IdleMin then fixes
             # IdleMin = M* - R*. Bounding it adds no solutions, but hands the
             # solver a constraint that propagates directly into the schedule.
-            minimum_clauses, secondary_top = self._cardinality_bound(
+            idle_min = max_optimum - range_optimum
+            minimum_clauses, derived_top = self._cardinality_bound(
                 self.model.min_break_lits(),
-                secondary_optimum - primary_optimum,
-                secondary_top,
+                idle_min,
+                derived_top,
             )
 
-            # Lower bound on IdleSum. With IdleMin = M* - R*, every one of the
+            # Lower bound on IdleSum. With IdleMin = M* - p*, every one of the
             # |P*| objective participants has B(p) >= IdleMin and at least one
             # reaches IdleMax, so
             #     IdleSum >= IdleMin * (|P*| - 1) + IdleMax.
@@ -422,15 +450,25 @@ class B2BIncrementalSATSolver:
             # Set B2B_SUM_BOUNDS=0 to disable both IdleSum bounds, for A/B
             # measurement of whether they actually pay for their encoding cost.
             if os.environ.get("B2B_SUM_BOUNDS", "1") != "0":
-                idle_min = secondary_optimum - primary_optimum
                 n_star = len(self.artifacts.objective_participants)
-                sum_lower = idle_min * max(0, n_star - 1) + secondary_optimum
-                lower_clauses, secondary_top = self._cardinality_atleast(
+                sum_lower = idle_min * max(0, n_star - 1) + max_optimum
+                lower_clauses, derived_top = self._cardinality_atleast(
                     self.artifacts.secondary_objective_lits,
                     sum_lower,
-                    secondary_top,
+                    derived_top,
                 )
                 bound_clauses.extend(lower_clauses)
+
+                # Upper bound, the mirror image: every objective participant has
+                # B(p) <= IdleMax and at least one sits at IdleMin, so
+                #     IdleSum <= IdleMax * (|P*| - 1) + IdleMin.
+                sum_upper = max_optimum * max(0, n_star - 1) + idle_min
+                upper_clauses, derived_top = self._cardinality_bound(
+                    self.artifacts.secondary_objective_lits,
+                    sum_upper,
+                    derived_top,
+                )
+                bound_clauses.extend(upper_clauses)
 
             # No separate upper-bound encoding here. Encoding IdleSum <= B as a
             # seqcounter over the 1445 IdleSum literals costs ~263k clauses and
@@ -439,9 +477,7 @@ class B2BIncrementalSATSolver:
             # applied through that totalizer instead, at no extra cost.
 
         phase3_base = [
-            *self.artifacts.cnf.clauses,
-            *primary_clauses,
-            *secondary_clauses,
+            *self._hard_clauses,
             *minimum_clauses,
             *bound_clauses,
         ]
@@ -456,7 +492,8 @@ class B2BIncrementalSATSolver:
             model = solver.get_model()
             best_assignment, best_stats, checks = self._evaluate_sat_model(
                 model,
-                imposed_bound=primary_optimum,
+                range_bound=range_optimum,
+                max_bound=max_optimum,
             )
             checks.extend(
                 self.model.secondary_objective_consistency_errors(model, best_stats)
@@ -473,7 +510,7 @@ class B2BIncrementalSATSolver:
             with ITotalizer(
                 lits=sum_lits,
                 ubound=best_sum,
-                top_id=secondary_top,
+                top_id=derived_top,
             ) as totalizer:
                 solver.append_formula(totalizer.cnf.clauses)
 
@@ -502,7 +539,8 @@ class B2BIncrementalSATSolver:
                         candidate_checks,
                     ) = self._evaluate_sat_model(
                         model,
-                        imposed_bound=primary_optimum,
+                        range_bound=range_optimum,
+                        max_bound=max_optimum,
                     )
                     candidate_checks.extend(
                         self.model.secondary_objective_consistency_errors(
@@ -524,19 +562,19 @@ class B2BIncrementalSATSolver:
                 best_sum = lo
 
         final_checks = self.model.validate_assignment(best_assignment)
-        if best_stats.fairness_gap != primary_optimum:
+        if best_stats.fairness_gap != range_optimum:
             final_checks.append(
                 "lexicographic primary mismatch: "
-                f"proven range={primary_optimum}, "
-                f"schedule range={best_stats.fairness_gap}"
+                f"proven IdleRange={range_optimum}, "
+                f"schedule IdleRange={best_stats.fairness_gap}"
             )
         if (
-            secondary_optimum is not None
-            and best_stats.max_internal_idle_slots != secondary_optimum
+            max_optimum is not None
+            and best_stats.max_internal_idle_slots != max_optimum
         ):
             final_checks.append(
                 "lexicographic secondary mismatch: "
-                f"proven IdleMax={secondary_optimum}, "
+                f"proven IdleMax={max_optimum}, "
                 f"schedule IdleMax={best_stats.max_internal_idle_slots}"
             )
         if best_stats.total_internal_idle_slots != best_sum:
@@ -548,7 +586,7 @@ class B2BIncrementalSATSolver:
         return best_assignment, best_stats, final_checks, best_sum
 
     def solve(self, verbose: bool = False) -> dict[str, Any]:
-        with _new_solver(self.artifacts.cnf.clauses, self.solver_name) as solver:
+        with _new_solver(self._hard_clauses, self.solver_name) as solver:
             if not solver.solve():
                 return self._pack_result("UNSAT", None, None)
 
@@ -562,35 +600,27 @@ class B2BIncrementalSATSolver:
             if verbose:
                 print(f"[IncrementalSAT] initial IdleRange(P*)={best_obj}")
 
-            if best_obj == 0 and self.artifacts.objective_mode == "idle-range":
-                return self._pack_result(
-                    "OPTIMAL",
-                    best_assignment,
-                    best_stats,
-                    proven_optimum=0,
-                )
-
-            objective_lits = self.artifacts.objective_lits
+            range_lits = self._range_lits
             low = 0
             if best_obj > 0:
-                if not objective_lits:
+                if not range_lits:
                     checks = [
                         "nonzero schedule gap but the encoder produced no objective literals"
                     ]
                     return self._pack_result("ERROR", best_assignment, best_stats, checks)
 
                 with ITotalizer(
-                    lits=objective_lits,
+                    lits=range_lits,
                     ubound=best_obj,
-                    top_id=self.artifacts.n_vars,
+                    top_id=self._hard_top,
                 ) as totalizer:
                     solver.append_formula(totalizer.cnf.clauses)
                     low, high = 0, best_obj - 1
 
                     while low <= high:
                         bound = (low + high) // 2
-                        # rhs[bound] means at least bound+1 objective literals are true.
-                        # Its negation therefore imposes sum(objective_lits) <= bound.
+                        # rhs[bound] means at least bound+1 range literals are true.
+                        # Its negation therefore imposes sum(range_lits) <= bound.
                         sat = solver.solve(assumptions=[-totalizer.rhs[bound]])
                         if verbose:
                             print(
@@ -606,7 +636,7 @@ class B2BIncrementalSATSolver:
                                 candidate_checks,
                             ) = self._evaluate_sat_model(
                                 candidate_model,
-                                imposed_bound=bound,
+                                range_bound=bound,
                             )
                             if candidate_checks:
                                 return self._pack_result(
@@ -627,15 +657,21 @@ class B2BIncrementalSATSolver:
             if best_stats.fairness_gap != low:
                 final_checks.append(
                     "optimization mismatch: "
-                    f"proven optimum={low}, schedule gap={best_stats.fairness_gap}"
+                    f"proven IdleRange={low}, "
+                    f"schedule IdleRange={best_stats.fairness_gap}"
                 )
 
             if (
                 self.artifacts.objective_mode in LEXICOGRAPHIC_MODES
                 and not final_checks
             ):
+                # IR is proven: fold IR <= R* into the hard clauses so phase 2
+                # searches IdleMax over a formula that already pins the tier
+                # above. The phase-1 totalizer stays behind in this solver.
+                self._pin_tier(range_lits, low)
+
                 secondary_optimum = None
-                skip_max = self.artifacts.objective_mode == "lex-idlesum"
+                skip_max = False  # phase 2 proves IdleMax before the IdleSum tier
                 if not skip_max:
                     (
                         best_assignment,
@@ -646,6 +682,10 @@ class B2BIncrementalSATSolver:
 
                 tertiary_optimum = None
                 if not final_checks and (skip_max or secondary_optimum is not None):
+                    # IM is proven too: pin it as well, so phase 3 searches
+                    # IdleSum with both IR <= R* and IM <= M* hard.
+                    if secondary_optimum is not None:
+                        self._pin_tier(self._max_lits, secondary_optimum)
                     (
                         best_assignment,
                         best_stats,
@@ -684,7 +724,7 @@ def solve_b2b(
     precedence_mode: str = "traditional",
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return B2BIncrementalSATSolver(
@@ -702,7 +742,7 @@ def solve_b2b_traditional(
     fairness_limit: int | None = None,
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return solve_b2b(
@@ -721,7 +761,7 @@ def solve_b2b_staircase(
     fairness_limit: int | None = None,
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return solve_b2b(

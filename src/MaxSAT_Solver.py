@@ -15,12 +15,11 @@ from B2B_Instance import (
 )
 
 
-#: Weight of one IdleMax unit in the single-phase lexicographic WCNF. Chosen to
-#: dwarf any attainable IdleSum so IdleMax always outranks the sum.
+#: Weight of one p unit (p = IdleMax - IdleMin). Dwarfs any attainable IdleSum.
 SECONDARY_OBJECTIVE_WEIGHT = 10000
 
-#: Weight of one IdleRange unit. Dwarfs any attainable (IdleMax, IdleSum) pair,
-#: so the range dominates both lower levels.
+#: Weight of one IdleMax unit. Dwarfs any attainable (p, IdleSum) pair, so
+#: IdleMax dominates both lower tiers.
 PRIMARY_OBJECTIVE_WEIGHT = SECONDARY_OBJECTIVE_WEIGHT * 10000
 
 
@@ -50,7 +49,7 @@ class B2BMaxSATSolver:
         fairness_limit: int | None = None,
         precedence_mode: str = "traditional",
         encoding_variant: str = "imp12+",
-        objective_mode: str = "idle-range",
+        objective_mode: str = "im-is",
         precedence_edge_mode: str = "direct",
     ) -> None:
         self.inst = _ensure_instance(instance_or_path)
@@ -69,45 +68,41 @@ class B2BMaxSATSolver:
         return self.model.build_wcnf()
 
     def _build_lexicographic_wcnf(self) -> tuple[WCNF, int, int]:
-        """Encode all three objectives in one WCNF using separating weights.
+        """Encode all three tiers in one WCNF using separating weights.
 
         RC2 minimizes
 
-            W1 * IdleRange + W2 * IdleMax + IdleSum
+            W1 * IdleMax + W2 * p + IdleSum
 
-        with W1 = PRIMARY_OBJECTIVE_WEIGHT and W2 = SECONDARY_OBJECTIVE_WEIGHT.
-        IdleSum cannot reach W2 and (W2 * IdleMax + IdleSum) cannot reach W1, so
-        no saving at a lower level can ever pay for one unit at a higher level.
-        The optimum is therefore the lexicographic optimum, and two divmods
-        recover the three components.
+        where p = IdleMax - IdleMin. IdleSum cannot reach W2 and
+        (W2 * p + IdleSum) cannot reach W1, so no saving at a lower tier can pay
+        for one unit at a higher one. The optimum is therefore the lexicographic
+        optimum, and two divmods recover the triple.
         """
         wcnf = WCNF()
         for clause in self.artifacts.cnf.clauses:
             wcnf.append(clause)
 
-        # lex-idlesum drops the IdleMax level entirely: no soft clauses for it,
-        # and w2 collapses to 1 so divmod yields (IdleRange, 0, IdleSum).
-        skip_max = self.artifacts.objective_mode == "lex-idlesum"
-        max_lits = [] if skip_max else self.model.max_break_lits()
+        max_lits = self.artifacts.objective_lits
+        gap_lits = self.artifacts.fairness_gap_lits
         sum_lits = self.artifacts.secondary_objective_lits
-        w1 = PRIMARY_OBJECTIVE_WEIGHT
-        w2 = 1 if skip_max else SECONDARY_OBJECTIVE_WEIGHT
+        w1, w2 = PRIMARY_OBJECTIVE_WEIGHT, SECONDARY_OBJECTIVE_WEIGHT
 
         # Guard the separation rather than let a silent carry corrupt the order.
-        if not skip_max and len(sum_lits) >= w2:
+        if len(sum_lits) >= w2:
             raise ValueError(
                 f"IdleSum upper bound {len(sum_lits)} does not fit under the "
-                f"secondary weight {w2}; lexicographic order would break"
+                f"p weight {w2}; lexicographic order would break"
             )
-        if w2 * len(max_lits) + len(sum_lits) >= w1:
+        if w2 * len(gap_lits) + len(sum_lits) >= w1:
             raise ValueError(
-                f"(IdleMax, IdleSum) upper bound does not fit under the primary "
+                f"(p, IdleSum) upper bound does not fit under the IdleMax "
                 f"weight {w1}; lexicographic order would break"
             )
 
-        for lit in self.artifacts.objective_lits:
-            wcnf.append([-lit], weight=w1)
         for lit in max_lits:
+            wcnf.append([-lit], weight=w1)
+        for lit in gap_lits:
             wcnf.append([-lit], weight=w2)
         for lit in sum_lits:
             wcnf.append([-lit], weight=1)
@@ -139,15 +134,15 @@ class B2BMaxSATSolver:
                 p + 1 for p in self.artifacts.objective_participants
             ),
             "objective_value": (
-                stats.fairness_gap if stats is not None else solver_cost
+                stats.max_internal_idle_slots
+                if stats is not None
+                else solver_cost
             ),
             "proven_optimum": solver_cost,
             "solver_cost": solver_cost,
+            # secondary tier is p = IdleMax - IdleMin, i.e. the idle range.
             "secondary_objective_value": (
-                stats.max_internal_idle_slots
-                if stats is not None
-                and self.artifacts.objective_mode == "lexicographic"
-                else None
+                stats.fairness_gap if stats is not None else None
             ),
             "secondary_proven_optimum": secondary_optimum,
             "tertiary_objective_value": (
@@ -165,16 +160,8 @@ class B2BMaxSATSolver:
             "n_clauses": self.artifacts.n_clauses,
             "n_soft": (
                 len(self.artifacts.objective_lits)
-                + (
-                    len(self.model.max_break_lits())
-                    if self.artifacts.objective_mode == "lexicographic"
-                    else 0
-                )
-                + (
-                    len(self.artifacts.secondary_objective_lits)
-                    if self.artifacts.objective_mode in LEXICOGRAPHIC_MODES
-                    else 0
-                )
+                + len(self.artifacts.fairness_gap_lits)
+                + len(self.artifacts.secondary_objective_lits)
             ),
             "n_primary_objective_lits": len(self.artifacts.objective_lits),
             "n_secondary_objective_lits": len(self.model.max_break_lits()),
@@ -199,9 +186,6 @@ class B2BMaxSATSolver:
                 return self._pack_result("UNSAT", None, None)
             primary_optimum, remainder = divmod(int(solver.cost), w1)
             secondary_optimum, tertiary_optimum = divmod(remainder, w2)
-            if w2 == 1:
-                # No IdleMax level: the whole remainder is IdleSum.
-                secondary_optimum, tertiary_optimum = None, remainder
 
         assignment = self.model.decode_assignment(sat_model)
         stats = self.model.compute_stats(assignment)
@@ -299,7 +283,7 @@ def solve_b2b(
     precedence_mode: str = "traditional",
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return B2BMaxSATSolver(
@@ -317,7 +301,7 @@ def solve_b2b_traditional(
     fairness_limit: int | None = None,
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return solve_b2b(
@@ -336,7 +320,7 @@ def solve_b2b_staircase(
     fairness_limit: int | None = None,
     encoding_variant: str = "imp12+",
     verbose: bool = False,
-    objective_mode: str = "lexicographic",
+    objective_mode: str = "im-is",
     precedence_edge_mode: str = "direct",
 ) -> dict[str, Any]:
     return solve_b2b(

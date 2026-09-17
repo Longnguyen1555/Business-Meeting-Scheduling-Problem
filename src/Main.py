@@ -46,11 +46,7 @@ PRECEDENCE_EDGE_MODES = [
     "source-closure",
 ]
 
-OBJECTIVE_MODES = [
-    "idle-range",
-    "lexicographic",
-    "lex-idlesum",
-]
+OBJECTIVE_MODES = ["im-is"]
 
 MEMORY_SAMPLE_INTERVAL_S = 0.05
 QUEUE_RESULT_GRACE_S = 1.0
@@ -103,11 +99,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--objective-mode",
         choices=[*OBJECTIVE_MODES, "both"],
-        default="lexicographic",
+        default="im-is",
         help=(
-            "idle-range: IdleRange(P*) only. lexicographic: "
-            "(IdleRange, IdleMax, IdleSum). lex-idlesum: (IdleRange, IdleSum), "
-            "dropping the IdleMax level."
+            "im-is: minimize IdleMax = max_p B(p) first, then IdleSum."
         ),
     )
 

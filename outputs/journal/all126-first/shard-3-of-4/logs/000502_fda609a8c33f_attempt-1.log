@@ -1,0 +1,4 @@
+started_utc=2026-09-11T16:54:51+00:00
+command=/home/vudangducminh/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python -u /home/vudangducminh/Business-Meeting-Scheduling-Problem/src/ORG_BG_D2.py --instance /home/vudangducminh/Business-Meeting-Scheduling-Problem/data_table06_forb/tic-12.forb0007.dzn --backend uwrmaxsat --timeout 7200.0 --csv /home/vudangducminh/outputs/journal/all126-first/shard-3-of-4/work/cell-0uke6lhz/detailed.csv --no-excel --uwrmaxsat-bin /home/vudangducminh/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 84fbd879008c3b4f0c5122c8ae6ba51d97e86a4b40867db8cc063a5b2a50547d
+
+[1/1] tic-12.forb0007: UNSAT vector= time=0.137028s

@@ -1,0 +1,45 @@
+{
+  "boot_id": "4146035f-5024-4a6c-9f99-dfa29a5ecd52",
+  "campaign_id": "journal-all126-first-smoke-v1",
+  "config_path": "journal_configs/all126_first_smoke.json",
+  "config_sha256": "3a5507d873ee8755c34245d9d05104e9c7ae21a5be77caf105e994d36e5db42a",
+  "cpu_governor": "",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+  "created_utc": "2026-09-11T16:15:25+00:00",
+  "execution_shard_count": 4,
+  "execution_shard_indices": [
+    3
+  ],
+  "execution_shard_policy": "content_rank_round_robin_v1",
+  "git_commit": "da75bc1a51f6bfbfceda52dad011b4ec978c826c",
+  "git_dirty": false,
+  "hostname": "salb",
+  "kernel_release": "7.0.0-1011-gcp",
+  "logical_cpu_cores": 8,
+  "manifest_sha256": {
+    "instances_manifest.csv": "42f85eaadecf187016397f0c1e7bb04bc871d45fe6ef1d90e17c9bd1b4d77ed0"
+  },
+  "physical_cpu_cores": 4,
+  "plan_sha256": "79c4f312010c90ab51aa4203d48bab9e1fa852044bb7ea758fda65344579a682",
+  "platform": "Linux-7.0.0-1011-gcp-x86_64-with-glibc2.39",
+  "python_executable": "/home/vudangducminh/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python",
+  "python_version": "3.12.3",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "requirements_sha256": "eb476d496e6ecfd24b7be12241223728248d54b86d22f5b4556720334acec7a1",
+  "runner_command": "/home/vudangducminh/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python /home/vudangducminh/Business-Meeting-Scheduling-Problem/src/Journal_Experiment.py --config journal_configs/all126_first_smoke.json --output-dir /home/vudangducminh/outputs/journal/all126-first-smoke/shard-3-of-4 --uwrmaxsat-bin /home/vudangducminh/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 84fbd879008c3b4f0c5122c8ae6ba51d97e86a4b40867db8cc063a5b2a50547d --resume --shard-count 4 --shard-index 3",
+  "swap_memory_mb": 0.0,
+  "system_memory_mb": 15983.285,
+  "uwrmaxsat_binary": "/home/vudangducminh/uwrmaxsat/build/release/bin/uwrmaxsat",
+  "uwrmaxsat_sha256": "84fbd879008c3b4f0c5122c8ae6ba51d97e86a4b40867db8cc063a5b2a50547d"
+}

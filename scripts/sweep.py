@@ -13,9 +13,8 @@ Examples
     # everything, 3 workers (matches the local runs)
     python3 scripts/sweep.py --workers 3
 
-    # one objective mode, one solver, on a big VM
-    python3 scripts/sweep.py --objective lexicographic --solver incremental \\
-        --workers 14 --timeout 3600 --tag lex3
+    # one solver, on a big VM
+    python3 scripts/sweep.py --solver incremental --workers 6 --timeout 7200
 
     # regenerate the UNSAT skip list from an existing result CSV, then sweep
     python3 scripts/sweep.py --build-skip output/IncrementalSAT.csv
@@ -53,11 +52,7 @@ SOLVER_CSV = {
 
 # Short suffix per objective, used for both the unit directory and the CSV name
 # so runs of different objectives never share either.
-OBJ_SUFFIX = {
-    "idle-range": "range",
-    "lexicographic": "lex3",
-    "lex-idlesum": "sum",
-}
+OBJ_SUFFIX = {"im-is": "imis"}
 
 SKIP_FILE = Path(__file__).with_name("unsat_skip.json")
 
@@ -177,8 +172,8 @@ def parse_args() -> argparse.Namespace:
                    help="regenerate the UNSAT skip list from this results CSV and exit")
     p.add_argument("--solver", default="all",
                    choices=[*SOLVER_CSV, "all"])
-    p.add_argument("--objective", default=["lexicographic"], nargs="+",
-                   choices=["idle-range", "lexicographic", "lex-idlesum"],
+    p.add_argument("--objective", default=["im-is"], nargs="+",
+                   choices=["im-is"],
                    help="one or more objective modes; each gets its own unit "
                         "directory and its own set of output CSVs")
     p.add_argument("--variant", default="imp12+")

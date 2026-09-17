@@ -1,0 +1,20 @@
+{
+  "agreement_groups_checked": 0,
+  "boot_ids": [],
+  "errors": [
+    "missing environment.json"
+  ],
+  "extra_jobs": 0,
+  "feasibility_classes": {},
+  "latest_attempts": 0,
+  "missing_jobs": 3,
+  "peak_memory_limit_mb": null,
+  "plan_sha256": "bdb09a768d307a17a4efc497416347fe268839d542d9bd28d65db9ecee8cb424",
+  "planned_jobs": 3,
+  "raw_attempts": 0,
+  "status_counts": {},
+  "unique_contents": 0,
+  "unique_lineages": 0,
+  "valid": false,
+  "validated_utc": "2026-09-11T16:14:26+00:00"
+}

@@ -1,0 +1,25 @@
+{
+  "agreement_groups_checked": 5,
+  "boot_ids": [
+    "4146035f-5024-4a6c-9f99-dfa29a5ecd52"
+  ],
+  "errors": [],
+  "extra_jobs": 0,
+  "feasibility_classes": {
+    "bg_d2_feasible": 3
+  },
+  "latest_attempts": 39,
+  "missing_jobs": 117,
+  "peak_memory_limit_mb": 12786.628,
+  "plan_sha256": "79c4f312010c90ab51aa4203d48bab9e1fa852044bb7ea758fda65344579a682",
+  "planned_jobs": 156,
+  "raw_attempts": 39,
+  "status_counts": {
+    "OPTIMAL": 33,
+    "TIMEOUT": 6
+  },
+  "unique_contents": 3,
+  "unique_lineages": 3,
+  "valid": true,
+  "validated_utc": "2026-09-11T16:50:00+00:00"
+}

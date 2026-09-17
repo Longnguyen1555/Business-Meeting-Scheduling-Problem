@@ -1,0 +1,14 @@
+started_utc=2026-09-11T16:50:00+00:00
+command=/home/vudangducminh/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python -u /home/vudangducminh/Business-Meeting-Scheduling-Problem/src/Main.py --instance /home/vudangducminh/Business-Meeting-Scheduling-Problem/data_table03_origin/tic-12.original.dzn --solver multiple --objective-mode ir --compact-encoding reference --collision-amo pairwise --domain-mode reduced --domain-filter-graph distance_closure --precedence-encoding sparse_suffix --precedence-graph distance_closure --encoding-variant imp12+ --maxsat-backend uwrmaxsat --sat-backend cadical --timeout 300.0 --threads 1 --random-seed 0 --csv /home/vudangducminh/outputs/journal/warmup/4146035f-5024-4a6c-9f99-dfa29a5ecd52/da75bc1a51f6/work/cell-syypk5g0/aggregate.csv --long-csv /home/vudangducminh/outputs/journal/warmup/4146035f-5024-4a6c-9f99-dfa29a5ecd52/da75bc1a51f6/work/cell-syypk5g0/detailed.csv --no-excel
+
+B2B benchmark: 1 run(s), objective_mode=ir, compact_encoding=reference, collision_amo=pairwise
+Selected input paths: 1 (family=all, content_deduplicated=True)
+SAT/MaxSAT domain mode(s): reduced
+Reduced-domain filter graph(s): distance_closure
+SAT backend: cadical
+Instance tic-12.original: 1 run(s)
+[1/1] tic-12.original | reduced | multiple | F=distance_closure | P=sparse_suffix | G=distance_closure | imp12+ | objective=ir | compact=reference | collision_amo=pairwise
+    SAT | objective=0 | time=0.069806s | config=R-SS-DC-ST-IRP-NIS-CD-IC12P
+Detailed CSV: /home/vudangducminh/outputs/journal/warmup/4146035f-5024-4a6c-9f99-dfa29a5ecd52/da75bc1a51f6/work/cell-syypk5g0/detailed.csv
+Aggregate CSV: /home/vudangducminh/outputs/journal/warmup/4146035f-5024-4a6c-9f99-dfa29a5ecd52/da75bc1a51f6/work/cell-syypk5g0/aggregate.csv
+Completed with errors=0, timeouts=0.
