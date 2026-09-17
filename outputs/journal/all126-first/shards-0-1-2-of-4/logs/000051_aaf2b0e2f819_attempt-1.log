@@ -1,0 +1,4 @@
+started_utc=2026-09-12T09:20:22+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/ORG_BG_D2.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table03_origin/forumt-14crafd.original.dzn --backend uwrmaxsat --timeout 7200.0 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/all126-first/shards-0-1-2-of-4/work/cell-9sp_f27l/detailed.csv --no-excel --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202
+
+[1/1] forumt-14crafd.original: OPTIMAL vector=4 time=0.941276s

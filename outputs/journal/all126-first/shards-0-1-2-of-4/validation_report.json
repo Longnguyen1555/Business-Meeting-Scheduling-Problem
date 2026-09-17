@@ -1,0 +1,28 @@
+{
+  "agreement_groups_checked": 184,
+  "boot_ids": [
+    "0c0b5b32-ea8b-47e5-aba0-49294b9d1541"
+  ],
+  "errors": [],
+  "extra_jobs": 0,
+  "feasibility_classes": {
+    "base_feasible_bg_cap_unsat": 2,
+    "base_unsat": 23,
+    "bg_d2_feasible": 70
+  },
+  "latest_attempts": 1235,
+  "missing_jobs": 403,
+  "peak_memory_limit_mb": 12790.444000000001,
+  "plan_sha256": "3586b3941f9d96df264ef9c179ea3443bda8876b97bab2cad29d30400ad5df44",
+  "planned_jobs": 1638,
+  "raw_attempts": 1235,
+  "status_counts": {
+    "OPTIMAL": 889,
+    "TIMEOUT": 33,
+    "UNSAT": 313
+  },
+  "unique_contents": 95,
+  "unique_lineages": 20,
+  "valid": true,
+  "validated_utc": "2026-09-15T23:00:25+00:00"
+}

@@ -1,0 +1,14 @@
+started_utc=2026-09-14T20:38:32+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/Main.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table07_fixed/tic-13.fixed040-Forb.dzn --solver maxsat --objective-mode isq --compact-encoding optimized --collision-amo adaptive_commander --domain-mode reduced --domain-filter-graph distance_closure --precedence-encoding sparse_suffix --precedence-graph distance_closure --encoding-variant imp12+ --maxsat-backend uwrmaxsat --sat-backend cadical --timeout 7200.0 --threads 1 --random-seed 0 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/all126-first/shards-0-1-2-of-4/work/cell-5az7r_31/aggregate.csv --long-csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/all126-first/shards-0-1-2-of-4/work/cell-5az7r_31/detailed.csv --no-excel --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202
+
+B2B benchmark: 1 run(s), objective_mode=isq, compact_encoding=optimized, collision_amo=adaptive_commander
+Selected input paths: 1 (family=all, content_deduplicated=True)
+SAT/MaxSAT domain mode(s): reduced
+Reduced-domain filter graph(s): distance_closure
+MaxSAT backend: uwrmaxsat
+Instance tic-13.fixed040-Forb: 1 run(s)
+[1/1] tic-13.fixed040-Forb | reduced | maxsat | F=distance_closure | P=sparse_suffix | G=distance_closure | imp12+ | objective=isq | compact=optimized | collision_amo=adaptive_commander
+    SAT | objective=60 | time=0.407236s | config=R-SS-DC-ST-ISQ-UW-IC12P-CABCD-FAMOAC
+Detailed CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/all126-first/shards-0-1-2-of-4/work/cell-5az7r_31/detailed.csv
+Aggregate CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/all126-first/shards-0-1-2-of-4/work/cell-5az7r_31/aggregate.csv
+Completed with errors=0, timeouts=0.
