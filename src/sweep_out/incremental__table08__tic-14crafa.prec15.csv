@@ -1,3 +1,0 @@
-instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
-tic-14crafa.prec15,no,incremental,direct,lexicographic,24.0 0,5.6 0,8.4 0,2.4 0,0.8 0
-tic-14crafa.prec15,yes,incremental,direct,lexicographic,23.0 0,3.0 0,30.1 0,2.1 0,0.6 0

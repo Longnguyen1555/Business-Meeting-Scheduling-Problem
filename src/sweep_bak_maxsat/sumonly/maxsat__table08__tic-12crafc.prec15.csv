@@ -1,3 +1,0 @@
-instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
-tic-12crafc.prec15,no,maxsat,direct,lex-idlesum,-,-,-,-,0.1 0
-tic-12crafc.prec15,yes,maxsat,direct,lex-idlesum,-,-,-,-,0.1 0

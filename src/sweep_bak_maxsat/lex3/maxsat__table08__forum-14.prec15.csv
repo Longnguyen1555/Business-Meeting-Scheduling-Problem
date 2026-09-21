@@ -1,3 +1,0 @@
-instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
-forum-14.prec15,no,maxsat,direct,lexicographic,-,-,-,-,53.1 4
-forum-14.prec15,yes,maxsat,direct,lexicographic,-,-,-,-,30.7 4

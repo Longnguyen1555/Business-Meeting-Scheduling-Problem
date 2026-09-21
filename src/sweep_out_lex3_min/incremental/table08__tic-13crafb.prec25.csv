@@ -1,3 +1,0 @@
-instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
-tic-13crafb.prec25,no,incremental,direct,lexicographic,-,-,-,-,0.6 0
-tic-13crafb.prec25,yes,incremental,direct,lexicographic,-,-,-,-,1.2 0
