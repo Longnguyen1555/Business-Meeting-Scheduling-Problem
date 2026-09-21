@@ -1,0 +1,25 @@
+started_utc=2026-09-20T06:22:31+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/ORG_new.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table07_fixed/ticf-13crafa.fixed040-Forb.dzn --timeout 7200.0 --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-ylk_usnq/detailed.csv --excel-dir /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-ylk_usnq/excel --objective-mode ir_im_is --participant-idle-cap-rule none --participant-idle-cap-alpha 1/2
+
+Found 1 selected input paths (content_deduplicated=True)
+
+============================================================
+Processing: ticf-13crafa.fixed040-Forb.dzn
+Test number: 1
+============================================================
+Input parsing completed in 0.0981 seconds
+Constraint building completed in 0.5973 seconds
+Total variables: 130863
+Total hard clauses: 361864
+Total soft clauses: 1140
+Participant idle cap: none (added clauses: 0)
+UWrMaxSAT optimum scalar cost: 234681
+MaxSAT solving completed in 2.0437 seconds
+
+============================================================
+TOTAL RUNTIME: 3.1158 seconds (3.12s)
+============================================================
+Peak process-tree RSS: 205.449 MB
+Excel exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-ylk_usnq/excel/ticf-13crafa.fixed040-Forb.xlsx
+Result queued for CSV: OPTIMAL | objective=(12, 14, 239) | participant_idle_cap=none
+CSV exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-ylk_usnq/detailed.csv

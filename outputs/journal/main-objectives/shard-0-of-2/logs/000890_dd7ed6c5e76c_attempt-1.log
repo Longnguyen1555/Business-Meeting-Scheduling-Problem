@@ -1,0 +1,14 @@
+started_utc=2026-09-20T11:00:25+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/Main.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table07_fixed/ticf-13crafb.fixed040-Forb.dzn --solver maxsat --objective-mode bg_d2 --compact-encoding optimized --collision-amo adaptive_commander --participant-idle-cap-rule none --participant-idle-cap-alpha 1/2 --domain-mode reduced --domain-filter-graph distance_closure --precedence-encoding sparse_suffix --precedence-graph distance_closure --encoding-variant imp12+ --maxsat-backend uwrmaxsat --sat-backend cadical --timeout 7200.0 --threads 1 --random-seed 0 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-a8tc33dh/aggregate.csv --long-csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-a8tc33dh/detailed.csv --no-excel --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202
+
+B2B benchmark: 1 run(s), objective_mode=bg_d2, compact_encoding=optimized, collision_amo=adaptive_commander
+Selected input paths: 1 (family=all, content_deduplicated=True)
+SAT/MaxSAT domain mode(s): reduced
+Reduced-domain filter graph(s): distance_closure
+MaxSAT backend: uwrmaxsat
+Instance ticf-13crafb.fixed040-Forb: 1 run(s)
+[1/1] ticf-13crafb.fixed040-Forb | reduced | maxsat | F=distance_closure | P=sparse_suffix | G=distance_closure | imp12+ | objective=bg_d2 | compact=optimized | collision_amo=adaptive_commander
+    UNSAT | objective= | time=0.554933s | config=R-SS-DC-ST-BGD2-UW-IC12P-CABCD-FAMOAC
+Detailed CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-a8tc33dh/detailed.csv
+Aggregate CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-a8tc33dh/aggregate.csv
+Completed with errors=0, timeouts=0.

@@ -1,0 +1,25 @@
+started_utc=2026-09-20T14:20:42+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/ORG_new.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table03_origin/forumt-14crafc.original.dzn --timeout 7200.0 --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-473otbfz/detailed.csv --excel-dir /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-473otbfz/excel
+
+Found 1 selected input paths (content_deduplicated=True)
+
+============================================================
+Processing: forumt-14crafc.original.dzn
+Test number: 1
+============================================================
+Input parsing completed in 0.0109 seconds
+Constraint building completed in 0.1356 seconds
+Total variables: 27972
+Total hard clauses: 93106
+Total soft clauses: 7
+Participant idle cap: none (added clauses: 0)
+UWrMaxSAT optimum scalar cost: 2
+MaxSAT solving completed in 0.2026 seconds
+
+============================================================
+TOTAL RUNTIME: 0.4422 seconds (0.44s)
+============================================================
+Peak process-tree RSS: 74.367 MB
+Excel exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-473otbfz/excel/forumt-14crafc.original.xlsx
+Result queued for CSV: OPTIMAL | objective=(2,) | participant_idle_cap=none
+CSV exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-473otbfz/detailed.csv

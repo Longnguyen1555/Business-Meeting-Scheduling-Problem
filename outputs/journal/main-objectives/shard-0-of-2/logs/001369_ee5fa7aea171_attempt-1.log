@@ -1,0 +1,24 @@
+started_utc=2026-09-20T15:04:12+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/ORG_new.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table08_prec/ticf-14crafa.prec25.dzn --timeout 7200.0 --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-5x7nhjgm/detailed.csv --excel-dir /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-5x7nhjgm/excel
+
+Found 1 selected input paths (content_deduplicated=True)
+
+============================================================
+Processing: ticf-14crafa.prec25.dzn
+Test number: 1
+============================================================
+Input parsing completed in 0.0190 seconds
+Constraint building completed in 0.8360 seconds
+Total variables: 162425
+Total hard clauses: 522762
+Total soft clauses: 20
+Participant idle cap: none (added clauses: 0)
+MaxSAT solving completed in 0.5423 seconds
+
+============================================================
+TOTAL RUNTIME: 1.8681 seconds (1.87s)
+============================================================
+Peak process-tree RSS: 267.348 MB
+Excel exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-5x7nhjgm/excel/ticf-14crafa.prec25.xlsx
+Result queued for CSV: UNSAT | objective=N/A | participant_idle_cap=none
+CSV exported to: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-5x7nhjgm/detailed.csv

@@ -1,0 +1,4 @@
+started_utc=2026-09-20T20:56:32+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/ORG_BG_D2.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table07_fixed/tic-14crafd.fixed020-Forb.dzn --backend uwrmaxsat --timeout 7200.0 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/main-objectives/shard-0-of-2/work/cell-kjsxv2w_/detailed.csv --no-excel --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202
+
+[1/1] tic-14crafd.fixed020-Forb: OPTIMAL vector=2 time=0.972851s

@@ -1,0 +1,14 @@
+started_utc=2026-09-17T08:48:53+00:00
+command=/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python -u /home/g24021555/Business-Meeting-Scheduling-Problem/src/Main.py --instance /home/g24021555/Business-Meeting-Scheduling-Problem/data_table03_origin/forumt-14crafe.original.dzn --solver maxsat --objective-mode ir --compact-encoding direct_range_soft --collision-amo pairwise --participant-idle-cap-rule none --participant-idle-cap-alpha 1/2 --domain-mode reduced --domain-filter-graph distance_closure --precedence-encoding sparse_suffix --precedence-graph distance_closure --encoding-variant imp12+ --maxsat-backend uwrmaxsat --sat-backend cadical --timeout 7200.0 --threads 1 --random-seed 0 --csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/compact-objectives/shard-0-of-2/work/cell-ybc8x63t/aggregate.csv --long-csv /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/compact-objectives/shard-0-of-2/work/cell-ybc8x63t/detailed.csv --no-excel --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202
+
+B2B benchmark: 1 run(s), objective_mode=ir, compact_encoding=direct_range_soft, collision_amo=pairwise
+Selected input paths: 1 (family=all, content_deduplicated=True)
+SAT/MaxSAT domain mode(s): reduced
+Reduced-domain filter graph(s): distance_closure
+MaxSAT backend: uwrmaxsat
+Instance forumt-14crafe.original: 1 run(s)
+[1/1] forumt-14crafe.original | reduced | maxsat | F=distance_closure | P=sparse_suffix | G=distance_closure | imp12+ | objective=ir | compact=direct_range_soft | collision_amo=pairwise
+    SAT | objective=2 | time=0.46787s | config=R-SS-DC-ST-IRP-UW-IC12P-CD
+Detailed CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/compact-objectives/shard-0-of-2/work/cell-ybc8x63t/detailed.csv
+Aggregate CSV: /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/compact-objectives/shard-0-of-2/work/cell-ybc8x63t/aggregate.csv
+Completed with errors=0, timeouts=0.
