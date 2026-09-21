@@ -1,0 +1,3 @@
+instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
+forumt-14crafe.forb0007,no,multiple,direct,lexicographic,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,yes,multiple,direct,lexicographic,-,-,-,-,UNSAT

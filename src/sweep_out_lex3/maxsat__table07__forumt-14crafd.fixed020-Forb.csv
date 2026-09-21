@@ -1,0 +1,3 @@
+instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
+forumt-14crafd.fixed020-Forb,no,maxsat,direct,lexicographic,-,-,-,-,0.1 4
+forumt-14crafd.fixed020-Forb,yes,maxsat,direct,lexicographic,-,-,-,-,0.1 4

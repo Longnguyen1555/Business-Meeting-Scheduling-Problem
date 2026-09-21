@@ -1,0 +1,3 @@
+instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
+forum-13.prec15,no,incremental,direct,lexicographic,-,-,-,-,4.3 0
+forum-13.prec15,yes,incremental,direct,lexicographic,-,-,-,-,4.0 0

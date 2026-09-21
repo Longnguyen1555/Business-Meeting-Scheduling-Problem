@@ -1,0 +1,3 @@
+instance,staircase,solver,precedence_edges,objective,basic,imp1,imp2,imp12,imp12+
+ticf-13crafc.forb0007,no,maxsat,direct,lex-idlesum,-,-,-,-,26.7 0
+ticf-13crafc.forb0007,yes,maxsat,direct,lex-idlesum,-,-,-,-,26.0 0
