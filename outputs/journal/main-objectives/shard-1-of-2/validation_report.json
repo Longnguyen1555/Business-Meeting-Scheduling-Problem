@@ -1,0 +1,29 @@
+{
+  "agreement_groups_checked": 0,
+  "boot_ids": [
+    "dec4e119-662d-45aa-9b63-3f0037ed92a0"
+  ],
+  "errors": [
+    "missing normalized/detailed.csv"
+  ],
+  "extra_jobs": 0,
+  "feasibility_classes": {
+    "unclassified": 1
+  },
+  "latest_attempts": 1,
+  "missing_jobs": 2267,
+  "peak_memory_limit_mb": 12786.624800000001,
+  "plan_sha256": "198e0a188f5c34bf698e1a89805124af5d04cd36118057fc28941530fc496389",
+  "planned_jobs": 2268,
+  "raw_attempts": 1,
+  "result_origin_counts": {
+    "reused": 1
+  },
+  "status_counts": {
+    "UNSAT": 1
+  },
+  "unique_contents": 1,
+  "unique_lineages": 1,
+  "valid": false,
+  "validated_utc": "2026-09-21T15:15:53+00:00"
+}

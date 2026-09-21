@@ -2,7 +2,6 @@
 /venv
 /.venv
 /.vscode
-/outputs
 .venv/
 .venv-ubuntu/
 __pycache__/

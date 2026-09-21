@@ -1,0 +1,10 @@
+{
+  "error_rows": 0,
+  "interrupted": true,
+  "latest_rows": 728,
+  "plan_sha256": "6f10ed301d388d033b7e7053e6e5ee6444de6785dd364f1e49e813d19de00d7f",
+  "planned_jobs": 1890,
+  "signal": 1,
+  "terminal_rows": 728,
+  "updated_utc": "2026-09-19T09:10:55+00:00"
+}
