@@ -1,0 +1,102 @@
+{
+  "campaign_id": "journal-machine-warmup-v1",
+  "controller_grace_seconds": 60.0,
+  "job_count": 3,
+  "jobs": [
+    {
+      "base_lineage_id": "b2b-lineage-tic-12",
+      "configuration": {
+        "domain_filter_graph": "distance_closure",
+        "domain_mode": "reduced",
+        "encoding_variant": "imp12+",
+        "executor": "main",
+        "id": "warmup_maxsat_ir",
+        "maxsat_backend": "uwrmaxsat",
+        "objective_mode": "ir",
+        "precedence_encoding": "sparse_suffix",
+        "precedence_graph": "distance_closure",
+        "sat_backend": "cadical",
+        "solver": "maxsat"
+      },
+      "experiment_block": "excluded_machine_warmup",
+      "instance": "tic-12.original",
+      "instance_content_id": "b2b-f6a0647171ea3a01",
+      "instance_family": "original",
+      "instance_path": "data_table03_origin/tic-12.original.dzn",
+      "instance_sha256": "f6a0647171ea3a01e077474a4c53b26d76eed6b7fe828661dbb02126b4225b46",
+      "instance_variant": "original",
+      "planned_configuration_id": "warmup_maxsat_ir",
+      "repetition": 1,
+      "run_key": "journal-machine-warmup-v1::excluded_machine_warmup::b2b-f6a0647171ea3a01::warmup_maxsat_ir::rep-1",
+      "run_order": 1
+    },
+    {
+      "base_lineage_id": "b2b-lineage-tic-12",
+      "configuration": {
+        "domain_filter_graph": "distance_closure",
+        "domain_mode": "reduced",
+        "encoding_variant": "imp12+",
+        "executor": "main",
+        "id": "warmup_multiple_ir",
+        "objective_mode": "ir",
+        "precedence_encoding": "sparse_suffix",
+        "precedence_graph": "distance_closure",
+        "sat_backend": "cadical",
+        "solver": "multiple"
+      },
+      "experiment_block": "excluded_machine_warmup",
+      "instance": "tic-12.original",
+      "instance_content_id": "b2b-f6a0647171ea3a01",
+      "instance_family": "original",
+      "instance_path": "data_table03_origin/tic-12.original.dzn",
+      "instance_sha256": "f6a0647171ea3a01e077474a4c53b26d76eed6b7fe828661dbb02126b4225b46",
+      "instance_variant": "original",
+      "planned_configuration_id": "warmup_multiple_ir",
+      "repetition": 1,
+      "run_key": "journal-machine-warmup-v1::excluded_machine_warmup::b2b-f6a0647171ea3a01::warmup_multiple_ir::rep-1",
+      "run_order": 2
+    },
+    {
+      "base_lineage_id": "b2b-lineage-tic-12",
+      "configuration": {
+        "domain_filter_graph": "distance_closure",
+        "domain_mode": "reduced",
+        "encoding_variant": "imp12+",
+        "executor": "main",
+        "id": "warmup_incremental_ir",
+        "objective_mode": "ir",
+        "precedence_encoding": "sparse_suffix",
+        "precedence_graph": "distance_closure",
+        "sat_backend": "cadical",
+        "solver": "incremental"
+      },
+      "experiment_block": "excluded_machine_warmup",
+      "instance": "tic-12.original",
+      "instance_content_id": "b2b-f6a0647171ea3a01",
+      "instance_family": "original",
+      "instance_path": "data_table03_origin/tic-12.original.dzn",
+      "instance_sha256": "f6a0647171ea3a01e077474a4c53b26d76eed6b7fe828661dbb02126b4225b46",
+      "instance_variant": "original",
+      "planned_configuration_id": "warmup_incremental_ir",
+      "repetition": 1,
+      "run_key": "journal-machine-warmup-v1::excluded_machine_warmup::b2b-f6a0647171ea3a01::warmup_incremental_ir::rep-1",
+      "run_order": 3
+    }
+  ],
+  "plan_sha256": "bdb09a768d307a17a4efc497416347fe268839d542d9bd28d65db9ecee8cb424",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "run_order_seed": 20260813,
+  "schema_version": 1,
+  "timeout_seconds": 300.0
+}

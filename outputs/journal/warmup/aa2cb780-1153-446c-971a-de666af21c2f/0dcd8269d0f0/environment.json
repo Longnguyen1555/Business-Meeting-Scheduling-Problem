@@ -1,0 +1,45 @@
+{
+  "boot_id": "aa2cb780-1153-446c-971a-de666af21c2f",
+  "campaign_id": "journal-machine-warmup-v1",
+  "config_path": "journal_configs/warmup.json",
+  "config_sha256": "5bcaadbaad19c5c93f8cb598834063c5a815d3dc6b48321fa52820e6f7cefb70",
+  "cpu_governor": "",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+  "created_utc": "2026-09-21T18:43:03+00:00",
+  "execution_shard_count": 1,
+  "execution_shard_indices": [
+    0
+  ],
+  "execution_shard_policy": "content_rank_round_robin_v1",
+  "git_commit": "0dcd8269d0f0692feadc4f70b70d8356158d6368",
+  "git_dirty": false,
+  "hostname": "instance-20260908-063614",
+  "kernel_release": "6.8.0-1066-gcp",
+  "logical_cpu_cores": 8,
+  "manifest_sha256": {
+    "instances_manifest.csv": "42f85eaadecf187016397f0c1e7bb04bc871d45fe6ef1d90e17c9bd1b4d77ed0"
+  },
+  "physical_cpu_cores": 4,
+  "plan_sha256": "bdb09a768d307a17a4efc497416347fe268839d542d9bd28d65db9ecee8cb424",
+  "platform": "Linux-6.8.0-1066-gcp-x86_64-with-glibc2.35",
+  "python_executable": "/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python",
+  "python_version": "3.10.12",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "requirements_sha256": "eb476d496e6ecfd24b7be12241223728248d54b86d22f5b4556720334acec7a1",
+  "runner_command": "/home/g24021555/Business-Meeting-Scheduling-Problem/.venv/bin/python /home/g24021555/Business-Meeting-Scheduling-Problem/src/Journal_Experiment.py --config journal_configs/warmup.json --output-dir /home/g24021555/Business-Meeting-Scheduling-Problem/outputs/journal/warmup/aa2cb780-1153-446c-971a-de666af21c2f/0dcd8269d0f0 --uwrmaxsat-bin /home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202",
+  "swap_memory_mb": 0.0,
+  "system_memory_mb": 15988.059,
+  "uwrmaxsat_binary": "/home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat",
+  "uwrmaxsat_sha256": "82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202"
+}
