@@ -22,6 +22,7 @@ from Journal_Experiment import (
     resolve_datasets,
 )
 from Merge_Journal_Shards import merge_shards
+from Recover_Journal_Results import recover_results
 from Select_Final_Tier_Experiment import build_final_tier_config
 from Validate_Journal_Run import validate_campaign
 
@@ -310,6 +311,67 @@ class JournalExperimentTests(unittest.TestCase):
             self.assertEqual(errors, [])
             self.assertTrue(report["valid"])
 
+            # A materialized CSV can restore a lost raw record without solving
+            # the completed run again, while marking the reconstructed record.
+            (output / "raw" / "results.jsonl").write_text("", encoding="utf-8")
+            recovery = recover_results(output, allow_dirty=True)
+            self.assertEqual(recovery["recovered_records"], 1)
+            recovered = json.loads(
+                (output / "raw" / "results.jsonl").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                recovered["raw_record_origin"],
+                "recovered_from_normalized_csv",
+            )
+            errors, report = validate_campaign(output, allow_dirty=True)
+            self.assertEqual(errors, [])
+            self.assertTrue(report["valid"])
+
+            environment_path = output / "environment.json"
+            environment = json.loads(
+                environment_path.read_text(encoding="utf-8")
+            )
+            environment["git_commit"] = "replacement-vm-started-from-old-sha"
+            environment_path.write_text(
+                json.dumps(environment), encoding="utf-8"
+            )
+            rejected_drift = subprocess.run(
+                [*base_command, "--resume"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertNotEqual(rejected_drift.returncode, 0)
+            self.assertIn("--allow-environment-drift", rejected_drift.stderr)
+            accepted_drift = subprocess.run(
+                [*base_command, "--resume", "--allow-environment-drift"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(
+                accepted_drift.returncode,
+                0,
+                accepted_drift.stdout + accepted_drift.stderr,
+            )
+            self.assertIn("pending_selected=0", accepted_drift.stdout)
+            resumed_environment = json.loads(
+                environment_path.read_text(encoding="utf-8")
+            )
+            self.assertTrue(resumed_environment["environment_drift_accepted"])
+            self.assertEqual(
+                resumed_environment["resume_environment_history"][-1][
+                    "accepted_mismatches"
+                ],
+                ["git commit"],
+            )
+
     def test_two_disjoint_shards_merge_into_one_valid_campaign(self) -> None:
         with tempfile.TemporaryDirectory(prefix="journal_shards_") as temporary:
             root = Path(temporary)
@@ -375,16 +437,39 @@ class JournalExperimentTests(unittest.TestCase):
                     completed.returncode, 0, completed.stdout + completed.stderr
                 )
             merged = root / "merged"
+            changed_environment_path = shard_outputs[1] / "environment.json"
+            changed_environment = json.loads(
+                changed_environment_path.read_text(encoding="utf-8")
+            )
+            changed_environment["python_version"] = "different-vm-python"
+            changed_environment_path.write_text(
+                json.dumps(changed_environment), encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "python_version"):
+                merge_shards(
+                    shard_outputs,
+                    merged,
+                    allow_dirty=True,
+                )
             report = merge_shards(
                 shard_outputs,
                 merged,
                 allow_dirty=True,
+                allow_mixed_environments=True,
             )
             self.assertTrue(report["valid"])
             self.assertEqual(report["latest_attempts"], 2)
+            strict_errors, _ = validate_campaign(
+                merged,
+                allow_dirty=True,
+            )
+            self.assertTrue(
+                any("accepted environment drift" in error for error in strict_errors)
+            )
             errors, _ = validate_campaign(
                 merged,
                 allow_dirty=True,
+                allow_environment_drift=True,
             )
             self.assertEqual(errors, [])
 

@@ -150,6 +150,7 @@ def validate_campaign(
     allow_dirty: bool = False,
     allow_incomplete: bool = False,
     allow_errors: bool = False,
+    allow_environment_drift: bool = False,
 ) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
     try:
@@ -214,14 +215,25 @@ def validate_campaign(
             errors.append("environment/plan SHA-256 mismatch")
         if environment.get("git_dirty") and not allow_dirty:
             errors.append("production provenance records git_dirty=true")
+        if (
+            environment.get("environment_drift_accepted")
+            and not allow_environment_drift
+        ):
+            errors.append(
+                "campaign contains accepted environment drift; rerun validation "
+                "with --allow-environment-drift"
+            )
         if environment.get("required_machine", {}) != plan.get(
             "required_machine", {}
         ):
             errors.append("environment/plan required-machine profile mismatch")
-        for mismatch in machine_profile_errors(
-            plan.get("required_machine"), environment
-        ):
-            errors.append(f"production machine profile mismatch: {mismatch}")
+        if not allow_environment_drift:
+            for mismatch in machine_profile_errors(
+                plan.get("required_machine"), environment
+            ):
+                errors.append(
+                    f"production machine profile mismatch: {mismatch}"
+                )
     expected_uwr_hash = str(environment.get("uwrmaxsat_sha256", ""))
     execution_shard_count = int(environment.get("execution_shard_count", 1))
     execution_shard_indices = tuple(
@@ -232,11 +244,14 @@ def validate_campaign(
     required_machine = plan.get("required_machine", {})
     peak_memory_fraction = required_machine.get("max_peak_memory_fraction")
     system_memory_mb = environment.get("system_memory_mb")
-    peak_memory_limit_mb = (
-        float(peak_memory_fraction) * float(system_memory_mb)
-        if peak_memory_fraction is not None and system_memory_mb is not None
-        else None
-    )
+    try:
+        peak_memory_limit_mb = (
+            float(peak_memory_fraction) * float(system_memory_mb)
+            if peak_memory_fraction is not None and system_memory_mb is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        peak_memory_limit_mb = None
 
     status_counts: Counter[str] = Counter()
     result_origin_counts: Counter[str] = Counter()
@@ -430,15 +445,23 @@ def validate_campaign(
                     errors.append(
                         f"{run_key}: {field}={value!r}, expected {requirement!r}"
                     )
-        if peak_memory_limit_mb is not None and status in TERMINAL_STATUSES:
+        row_peak_memory_limit_mb = peak_memory_limit_mb
+        if allow_environment_drift and peak_memory_fraction is not None:
+            try:
+                row_peak_memory_limit_mb = float(peak_memory_fraction) * float(
+                    row.get("system_memory_mb")
+                )
+            except (TypeError, ValueError):
+                row_peak_memory_limit_mb = peak_memory_limit_mb
+        if row_peak_memory_limit_mb is not None and status in TERMINAL_STATUSES:
             peak_memory_mb = row.get("peak_memory_mb")
             if _is_blank(peak_memory_mb):
                 errors.append(f"{run_key}: missing peak_memory_mb")
-            elif float(peak_memory_mb) > peak_memory_limit_mb:
+            elif float(peak_memory_mb) > row_peak_memory_limit_mb:
                 errors.append(
                     f"{run_key}: peak_memory_mb={peak_memory_mb} exceeds "
                     f"{float(peak_memory_fraction):.0%} of system RAM "
-                    f"({peak_memory_limit_mb:.3f} MiB)"
+                    f"({row_peak_memory_limit_mb:.3f} MiB)"
                 )
         if status == "OPTIMAL":
             if _objective_vector(row) is None:
@@ -468,7 +491,12 @@ def validate_campaign(
         )
         if requires_uwr and not row_uwr_hash:
             errors.append(f"{run_key}: missing required UWrMaxSAT binary hash")
-        if row_uwr_hash and expected_uwr_hash and row_uwr_hash != expected_uwr_hash:
+        if (
+            not allow_environment_drift
+            and row_uwr_hash
+            and expected_uwr_hash
+            and row_uwr_hash != expected_uwr_hash
+        ):
             errors.append(f"{run_key}: solver binary SHA-256 drift")
         content_ids.add(str(row.get("instance_content_id", "")))
         lineage_ids.add(str(row.get("base_lineage_id", "")))
@@ -571,6 +599,7 @@ def validate_campaign(
             }
         ),
         "feasibility_classes": dict(feasibility_classes),
+        "environment_drift_accepted": allow_environment_drift,
         "valid": not errors,
         "errors": errors,
     }
@@ -583,6 +612,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--allow-incomplete", action="store_true")
     parser.add_argument("--allow-errors", action="store_true")
+    parser.add_argument(
+        "--allow-environment-drift",
+        action="store_true",
+        help=(
+            "accept recorded per-row solver/machine differences while retaining "
+            "their provenance"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -594,6 +631,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_dirty=args.allow_dirty,
         allow_incomplete=args.allow_incomplete,
         allow_errors=args.allow_errors,
+        allow_environment_drift=args.allow_environment_drift,
     )
     report_path = output / "validation_report.json"
     with report_path.open("w", encoding="utf-8") as stream:

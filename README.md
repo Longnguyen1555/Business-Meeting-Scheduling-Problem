@@ -650,7 +650,12 @@ strict `validation_report.json` are regenerated from the latest attempts.
 After VM preemption or SSH loss, repeat the same command: `--resume` is added
 automatically, completed keys are skipped, and the interrupted cell is rerun.
 The runner refuses a changed plan, commit, manifest, configuration, solver hash,
-or dirty production worktree. An explicit `RETRY_ERRORS=1` creates a new
+or dirty production worktree. When a failed VM must be replaced, set
+`ALLOW_ENVIRONMENT_DRIFT=1` to accept a changed Git commit, VM profile,
+Python/kernel, or pinned solver binary while retaining the original rows and
+recording the new environment in `resume_environment_history`. The plan,
+configuration, dataset manifests, shard count, shard indices, and assignment
+policy must still match. An explicit `RETRY_ERRORS=1` creates a new
 append-only attempt for existing `ERROR` rows; it never reruns a completed
 timeout under a silently changed cutoff.
 
@@ -721,6 +726,59 @@ bash scripts/run_journal_gcp.sh compact-objectives
 bash scripts/run_journal_gcp.sh main-objectives
 bash scripts/run_journal_gcp.sh final-tier
 ```
+
+### Resume the interrupted shard on a replacement VM
+
+The committed `main-objectives/shard-1-of-2` normalized CSV contained all
+1,134 assigned rows although 1,133 corresponding JSONL records were lost. They
+can be restored without invoking a solver; every restored record contains the
+CSV SHA-256 and `raw_record_origin=recovered_from_normalized_csv`:
+
+```bash
+python3 src/Recover_Journal_Results.py \
+  --output outputs/journal/main-objectives/shard-1-of-2 \
+  --allow-dirty \
+  --allow-environment-drift
+```
+
+After that recovery, `main-objectives` has no missing shard-1 job. The
+replacement VM only needs to solve the 217 missing `compact-objectives` jobs.
+Use the same frozen two-shard assignment and explicitly accept the recorded VM
+transition:
+
+```bash
+git pull --ff-only
+export SHARD_COUNT=2
+export SHARD_INDICES=1
+export ALLOW_DIRTY=1
+export ALLOW_ENVIRONMENT_DRIFT=1
+
+bash scripts/run_journal_gcp.sh compact-objectives
+bash scripts/run_journal_gcp.sh main-objectives
+```
+
+Resume identifies completed work by the immutable `run_key`. Terminal rows
+(`OPTIMAL`, `UNSAT`, and `TIMEOUT`) are skipped; only absent rows are run.
+`main-objectives` is still invoked so it can validate its reuse source and
+materialize status, but it should report `pending_selected=0` after recovery.
+The separate warm-up campaign may run again and is not part of these job
+counts.
+
+Once both shards are complete, mixed VM/Python/solver provenance must be
+accepted explicitly during merge:
+
+```bash
+bash scripts/run_journal_gcp.sh merge-shards \
+  --input outputs/journal/compact-objectives/shard-0-of-2 \
+  --input outputs/journal/compact-objectives/shard-1-of-2 \
+  --output outputs/journal/compact-objectives-merged \
+  --allow-dirty \
+  --allow-mixed-environments
+```
+
+The merged archive retains every source `environment.json` under
+`environments/` and lists each accepted difference in its top-level
+`environment.json`.
 
 The main plan still contains all 2,268 comparison rows so validation and the
 final-tier selector see three repetitions for both model families. Reused rows

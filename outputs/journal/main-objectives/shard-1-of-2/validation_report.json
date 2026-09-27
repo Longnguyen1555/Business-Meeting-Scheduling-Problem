@@ -1,29 +1,34 @@
 {
-  "agreement_groups_checked": 0,
+  "agreement_groups_checked": 366,
   "boot_ids": [
+    "aa2cb780-1153-446c-971a-de666af21c2f",
     "dec4e119-662d-45aa-9b63-3f0037ed92a0"
   ],
-  "errors": [
-    "missing normalized/detailed.csv"
-  ],
+  "environment_drift_accepted": true,
+  "errors": [],
   "extra_jobs": 0,
   "feasibility_classes": {
-    "unclassified": 1
+    "base_feasible_bg_cap_unsat": 3,
+    "base_unsat": 60,
+    "bg_d2_feasible": 126
   },
-  "latest_attempts": 1,
-  "missing_jobs": 2267,
+  "latest_attempts": 1134,
+  "missing_jobs": 1134,
   "peak_memory_limit_mb": 12786.624800000001,
   "plan_sha256": "198e0a188f5c34bf698e1a89805124af5d04cd36118057fc28941530fc496389",
   "planned_jobs": 2268,
-  "raw_attempts": 1,
+  "raw_attempts": 1134,
   "result_origin_counts": {
-    "reused": 1
+    "executed": 945,
+    "reused": 189
   },
   "status_counts": {
-    "UNSAT": 1
+    "OPTIMAL": 747,
+    "TIMEOUT": 21,
+    "UNSAT": 366
   },
-  "unique_contents": 1,
-  "unique_lineages": 1,
-  "valid": false,
-  "validated_utc": "2026-09-21T15:15:53+00:00"
+  "unique_contents": 63,
+  "unique_lineages": 20,
+  "valid": true,
+  "validated_utc": "2026-09-27T03:02:37+00:00"
 }

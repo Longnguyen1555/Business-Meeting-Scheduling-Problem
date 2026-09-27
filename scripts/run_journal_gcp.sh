@@ -53,6 +53,7 @@ source "$ENV_FILE"
 JOURNAL_VENV=${JOURNAL_VENV:-.venv-ubuntu}
 OUTPUT_ROOT=${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}
 ALLOW_DIRTY=${ALLOW_DIRTY:-0}
+ALLOW_ENVIRONMENT_DRIFT=${ALLOW_ENVIRONMENT_DRIFT:-0}
 RETRY_ERRORS=${RETRY_ERRORS:-0}
 SHARD_COUNT=${SHARD_COUNT:-}
 SHARD_INDICES=${SHARD_INDICES:-}
@@ -136,6 +137,9 @@ runner_common=(
 )
 if [[ "$ALLOW_DIRTY" == "1" ]]; then
   runner_common+=(--allow-dirty)
+fi
+if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+  runner_common+=(--allow-environment-drift)
 fi
 if [[ "$RETRY_ERRORS" == "1" ]]; then
   runner_common+=(--retry-errors)
@@ -259,15 +263,18 @@ audit_coverage() {
 
 validate_existing() {
   local output_dir=$1
-  local dirty_args=()
+  local validation_args=()
   if [[ "$ALLOW_DIRTY" == "1" ]]; then
-    dirty_args+=(--allow-dirty)
+    validation_args+=(--allow-dirty)
+  fi
+  if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+    validation_args+=(--allow-environment-drift)
   fi
   if [[ -n "$SHARD_COUNT" ]]; then
-    dirty_args+=(--allow-incomplete)
+    validation_args+=(--allow-incomplete)
   fi
   "$PYTHON" src/Validate_Journal_Run.py \
-    --output "$output_dir" "${dirty_args[@]}"
+    --output "$output_dir" "${validation_args[@]}"
 }
 
 run_warmup() {
@@ -402,6 +409,9 @@ case "$command" in
     if [[ "$ALLOW_DIRTY" == "1" ]]; then
       selector_args+=(--allow-dirty)
     fi
+    if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+      selector_args+=(--allow-environment-drift)
+    fi
     "$PYTHON" src/Select_Final_Tier_Experiment.py \
       --main-output "$main_output" \
       --main-config journal_configs/main_objectives.json \
@@ -507,6 +517,8 @@ main-objectives requires the matching compact-objectives output and reuses its
 three selected repetition-1 cells. Set COMPACT_OBJECTIVES_OUTPUT only when the
 source is outside the default matching shard/output directory.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
+Set ALLOW_ENVIRONMENT_DRIFT=1 only when deliberately resuming an unchanged
+plan after a VM, Git commit, Python/kernel, or pinned solver-binary change.
 EOF
     ;;
   *)

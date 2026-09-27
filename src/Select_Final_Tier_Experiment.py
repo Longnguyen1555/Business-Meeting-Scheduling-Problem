@@ -162,6 +162,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--main-config", required=True, type=Path)
     parser.add_argument("--output-config", required=True, type=Path)
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--allow-environment-drift", action="store_true")
     return parser.parse_args()
 
 
@@ -170,6 +171,7 @@ def main() -> int:
     errors, _ = validate_campaign(
         args.main_output,
         allow_dirty=args.allow_dirty,
+        allow_environment_drift=args.allow_environment_drift,
     )
     if errors:
         raise SystemExit(

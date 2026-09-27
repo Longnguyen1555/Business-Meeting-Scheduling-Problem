@@ -1,8 +1,10 @@
 {
   "error_rows": 0,
+  "interrupted": false,
   "latest_rows": 1134,
+  "normalized_result_recovery": true,
   "plan_sha256": "198e0a188f5c34bf698e1a89805124af5d04cd36118057fc28941530fc496389",
   "planned_jobs": 2268,
   "terminal_rows": 1134,
-  "updated_utc": "2026-09-25T10:13:39+00:00"
+  "updated_utc": "2026-09-27T03:00:23+00:00"
 }

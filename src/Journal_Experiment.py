@@ -1078,6 +1078,7 @@ def _validate_reuse_source(
     source_output: Path,
     *,
     allow_dirty: bool,
+    allow_environment_drift: bool,
 ) -> None:
     command = [
         sys.executable,
@@ -1088,6 +1089,8 @@ def _validate_reuse_source(
     ]
     if allow_dirty:
         command.append("--allow-dirty")
+    if allow_environment_drift:
+        command.append("--allow-environment-drift")
     completed = subprocess.run(
         command,
         cwd=PROJECT_ROOT,
@@ -1166,6 +1169,7 @@ def import_reused_results(
     execution_shard_count: int,
     execution_shard_indices: tuple[int, ...],
     allow_dirty: bool = False,
+    allow_environment_drift: bool = False,
 ) -> dict[str, Any]:
     """Import planned result cells from compatible completed campaigns."""
 
@@ -1182,7 +1186,11 @@ def import_reused_results(
 
     sources: dict[str, dict[str, Any]] = {}
     for source_output in resolved_sources:
-        _validate_reuse_source(source_output, allow_dirty=allow_dirty)
+        _validate_reuse_source(
+            source_output,
+            allow_dirty=allow_dirty,
+            allow_environment_drift=allow_environment_drift,
+        )
         source_plan = json.loads(
             (source_output / "plan.json").read_text(encoding="utf-8")
         )
@@ -1199,7 +1207,7 @@ def import_reused_results(
         mismatches = _reuse_environment_mismatches(
             environment, source_environment
         )
-        if mismatches:
+        if mismatches and not allow_environment_drift:
             raise ValueError(
                 f"reuse source {campaign_id!r} has incompatible environment "
                 "fields: " + ", ".join(mismatches)
@@ -1226,6 +1234,9 @@ def import_reused_results(
             "output": source_output,
             "plan": source_plan,
             "environment": source_environment,
+            "accepted_environment_mismatches": (
+                mismatches if allow_environment_drift else []
+            ),
             "records": source_records,
             "jobs": source_jobs,
         }
@@ -1261,6 +1272,9 @@ def import_reused_results(
             "plan_sha256": source["plan"]["plan_sha256"],
             "imported": 0,
             "already_completed": 0,
+            "accepted_environment_mismatches": source[
+                "accepted_environment_mismatches"
+            ],
         }
         for campaign_id, source in sources.items()
     }
@@ -1435,6 +1449,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--retry-errors", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
+        "--allow-environment-drift",
+        action="store_true",
+        help=(
+            "resume after a VM/solver change; keep completed rows and record "
+            "the accepted environment differences"
+        ),
+    )
+    parser.add_argument(
         "--reuse-output",
         action="append",
         default=[],
@@ -1535,7 +1557,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     profile_errors = machine_profile_errors(plan.get("required_machine"))
-    if profile_errors:
+    if profile_errors and not args.allow_environment_drift:
         profile_id = plan.get("required_machine", {}).get("profile_id", "production")
         raise SystemExit(
             f"ERROR: machine does not match {profile_id!r}: "
@@ -1581,14 +1603,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     environment_path = output_dir / "environment.json"
+    current_profile = current_machine_profile()
+    requirements_path = PROJECT_ROOT / "src" / "requirements.txt"
+    current_requirements_sha256 = (
+        file_sha256(requirements_path) if requirements_path.is_file() else ""
+    )
     if environment_path.is_file():
         with environment_path.open(encoding="utf-8") as stream:
             environment = json.load(stream)
         resume_mismatches = []
+        accepted_resume_mismatches = []
         if environment.get("plan_sha256") != plan["plan_sha256"]:
             resume_mismatches.append("plan SHA-256")
         if environment.get("git_commit") != commit:
-            resume_mismatches.append("git commit")
+            accepted_resume_mismatches.append("git commit")
         if environment.get("config_sha256") != file_sha256(config_path):
             resume_mismatches.append("config SHA-256")
         current_manifest_hashes = {
@@ -1599,7 +1627,30 @@ def main(argv: list[str] | None = None) -> int:
         if environment.get("manifest_sha256") != current_manifest_hashes:
             resume_mismatches.append("dataset manifest SHA-256")
         if str(environment.get("uwrmaxsat_sha256", "")) != binary_sha256:
-            resume_mismatches.append("UWrMaxSAT SHA-256")
+            accepted_resume_mismatches.append("UWrMaxSAT SHA-256")
+        current_environment_fields = {
+            "requirements SHA-256": current_requirements_sha256,
+            "Python version": platform.python_version(),
+            "kernel release": platform.release(),
+            "CPU model": current_profile.get("cpu_model"),
+            "physical CPU cores": current_profile.get("physical_cpu_cores"),
+            "logical CPU cores": current_profile.get("logical_cpu_cores"),
+            "system memory": current_profile.get("system_memory_mb"),
+        }
+        recorded_environment_fields = {
+            "requirements SHA-256": environment.get("requirements_sha256"),
+            "Python version": environment.get("python_version"),
+            "kernel release": environment.get("kernel_release"),
+            "CPU model": environment.get("cpu_model"),
+            "physical CPU cores": environment.get("physical_cpu_cores"),
+            "logical CPU cores": environment.get("logical_cpu_cores"),
+            "system memory": environment.get("system_memory_mb"),
+        }
+        accepted_resume_mismatches.extend(
+            label
+            for label, current_value in current_environment_fields.items()
+            if recorded_environment_fields[label] != current_value
+        )
         if int(environment.get("execution_shard_count", 1)) != shard_count:
             resume_mismatches.append("execution shard count")
         if tuple(environment.get("execution_shard_indices", [0])) != shard_indices:
@@ -1613,6 +1664,31 @@ def main(argv: list[str] | None = None) -> int:
                 "ERROR: refusing to mix environments while resuming: "
                 + ", ".join(resume_mismatches)
             )
+        if accepted_resume_mismatches and not args.allow_environment_drift:
+            raise SystemExit(
+                "ERROR: refusing to mix environments while resuming: "
+                + ", ".join(accepted_resume_mismatches)
+                + "; pass --allow-environment-drift to retain completed jobs "
+                "and record the VM transition"
+            )
+        if args.allow_environment_drift:
+            environment.setdefault("resume_environment_history", []).append(
+                {
+                    "resumed_utc": utc_now(),
+                    "git_commit": commit,
+                    "git_dirty": dirty,
+                    "python_executable": sys.executable,
+                    "python_version": platform.python_version(),
+                    "kernel_release": platform.release(),
+                    "uwrmaxsat_binary": str(binary or ""),
+                    "uwrmaxsat_sha256": binary_sha256,
+                    "accepted_mismatches": accepted_resume_mismatches,
+                    "accepted_machine_profile_errors": profile_errors,
+                    **current_profile,
+                }
+            )
+            environment["environment_drift_accepted"] = True
+            _write_json(environment_path, environment)
     else:
         environment = build_environment(
             config_path,
@@ -1625,6 +1701,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         environment["git_commit"] = commit
         environment["git_dirty"] = dirty
+        if args.allow_environment_drift and profile_errors:
+            environment["environment_drift_accepted"] = True
+            environment["accepted_machine_profile_errors"] = profile_errors
         _write_json(environment_path, environment)
 
     try:
@@ -1636,6 +1715,7 @@ def main(argv: list[str] | None = None) -> int:
             execution_shard_count=shard_count,
             execution_shard_indices=shard_indices,
             allow_dirty=args.allow_dirty,
+            allow_environment_drift=args.allow_environment_drift,
         )
     except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
         raise SystemExit(f"ERROR: unable to reuse planned results: {exc}") from exc

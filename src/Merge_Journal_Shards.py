@@ -21,6 +21,22 @@ from Journal_Experiment import (
 from Validate_Journal_Run import validate_campaign
 
 
+MIXABLE_ENVIRONMENT_FIELDS = frozenset(
+    {
+        "git_commit",
+        "git_dirty",
+        "requirements_sha256",
+        "uwrmaxsat_sha256",
+        "python_version",
+        "kernel_release",
+        "cpu_model",
+        "physical_cpu_cores",
+        "logical_cpu_cores",
+        "system_memory_mb",
+    }
+)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as stream:
         return json.load(stream)
@@ -48,6 +64,7 @@ def _compatible_environment_errors(
         "cpu_model",
         "physical_cpu_cores",
         "logical_cpu_cores",
+        "system_memory_mb",
         "execution_shard_policy",
     )
     return [
@@ -62,6 +79,7 @@ def merge_shards(
     output: Path,
     *,
     allow_dirty: bool = False,
+    allow_mixed_environments: bool = False,
 ) -> dict[str, Any]:
     """Merge complete, disjoint execution shards of one frozen campaign."""
 
@@ -108,6 +126,7 @@ def merge_shards(
 
     assigned: set[int] = set()
     records: list[dict[str, Any]] = []
+    accepted_environment_differences: list[dict[str, Any]] = []
     for position, (path, environment) in enumerate(
         zip(resolved_inputs, environments), start=1
     ):
@@ -115,6 +134,7 @@ def merge_shards(
             path,
             allow_dirty=allow_dirty,
             allow_incomplete=True,
+            allow_environment_drift=allow_mixed_environments,
         )
         if source_errors:
             raise ValueError(
@@ -124,10 +144,28 @@ def merge_shards(
         mismatches = _compatible_environment_errors(
             reference_environment, environment
         )
-        if mismatches:
+        nonmixable = [
+            field
+            for field in mismatches
+            if field not in MIXABLE_ENVIRONMENT_FIELDS
+        ]
+        if nonmixable or (mismatches and not allow_mixed_environments):
             raise ValueError(
                 f"shard {position} has incompatible environment fields: "
-                + ", ".join(mismatches)
+                + ", ".join(nonmixable or mismatches)
+            )
+        if mismatches:
+            accepted_environment_differences.append(
+                {
+                    "source_position": position,
+                    "differences": {
+                        field: {
+                            "reference": reference_environment.get(field),
+                            "source": environment.get(field),
+                        }
+                        for field in mismatches
+                    },
+                }
             )
         if int(environment.get("execution_shard_count", 1)) != shard_count:
             raise ValueError(f"shard {position} has a different shard count")
@@ -201,6 +239,10 @@ def merge_shards(
             "boot_id": "",
             "runner_command": "Merge_Journal_Shards.py",
             "execution_shard_indices": sorted(assigned),
+            "environment_drift_accepted": allow_mixed_environments,
+            "accepted_environment_differences": (
+                accepted_environment_differences
+            ),
             "merged_from_shards": [
                 {
                     "path": str(path),
@@ -214,6 +256,20 @@ def merge_shards(
             ],
         }
     )
+    if accepted_environment_differences:
+        mixed_fields = {
+            field
+            for item in accepted_environment_differences
+            for field in item["differences"]
+        }
+        for field in mixed_fields:
+            if field == "git_dirty":
+                merged_environment[field] = any(
+                    bool(environment.get(field))
+                    for environment in environments
+                )
+            else:
+                merged_environment[field] = "MULTIPLE"
     _write_json(output / "environment.json", merged_environment)
     environment_dir = output / "environments"
     for position, environment in enumerate(environments, start=1):
@@ -260,7 +316,11 @@ def merge_shards(
             "merged_sources": len(resolved_inputs),
         },
     )
-    errors, report = validate_campaign(output, allow_dirty=allow_dirty)
+    errors, report = validate_campaign(
+        output,
+        allow_dirty=allow_dirty,
+        allow_environment_drift=allow_mixed_environments,
+    )
     _write_json(output / "validation_report.json", report)
     if errors:
         raise ValueError(
@@ -280,6 +340,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="development only; production shard environments must be clean",
     )
+    parser.add_argument(
+        "--allow-mixed-environments",
+        action="store_true",
+        help=(
+            "accept recorded VM, Git, Python, kernel, and solver-binary "
+            "differences while preserving each source environment"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -290,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
             [Path(value) for value in args.input],
             Path(args.output),
             allow_dirty=args.allow_dirty,
+            allow_mixed_environments=args.allow_mixed_environments,
         )
     except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
         print(f"ERROR: {exc}")
