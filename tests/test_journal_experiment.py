@@ -106,9 +106,9 @@ class JournalExperimentTests(unittest.TestCase):
             {
                 "objective_mode": "ir_im_is",
                 "planned_configuration_id": "published_2022_ir_im_is",
-                "status": "TIMEOUT",
-                "runtime_seconds": "7200",
-                "peak_memory_mb": "100",
+                "status": "OPTIMAL",
+                "runtime_seconds": "1",
+                "peak_memory_mb": "50",
             },
             {
                 "objective_mode": "ir_im_is",
@@ -122,8 +122,16 @@ class JournalExperimentTests(unittest.TestCase):
             main_config, main_plan, rows
         )
         self.assertEqual(
-            report["selected_configuration_id"],
+            report["baseline_configuration_id"],
             "compact_cdf_ir_im_is",
+        )
+        self.assertEqual(
+            report["selection_basis"],
+            "prespecified_compact_configuration",
+        )
+        self.assertEqual(
+            report["ranking"][0]["configuration_id"],
+            "published_2022_ir_im_is",
         )
         self.assertEqual(final_config["expected_job_count"], 378)
         final_cells = final_config["blocks"][0]["configurations"]

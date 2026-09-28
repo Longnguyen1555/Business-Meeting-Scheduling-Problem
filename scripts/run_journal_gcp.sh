@@ -404,7 +404,7 @@ case "$command" in
     ;;
   final-tier)
     main_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives}
-    final_config="$OUTPUT_ROOT/final-tier-selected.json"
+    final_config="$OUTPUT_ROOT/final-tier-compact.json"
     selector_args=()
     if [[ "$ALLOW_DIRTY" == "1" ]]; then
       selector_args+=(--allow-dirty)
@@ -418,7 +418,7 @@ case "$command" in
       --output-config "$final_config" \
       "${selector_args[@]}"
     run_warmup
-    final_tier_output=final-tier-selected
+    final_tier_output=final-tier-compact
     if [[ -n "$shard_label" ]]; then
       final_tier_output="$final_tier_output/$shard_label"
     fi
@@ -502,7 +502,7 @@ Commands:
   compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
   cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
   main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
-  final-tier              select by main IR-IM-IS, then run IR-IM-ISQ only (378 runs)
+  final-tier              run Compact C+D+F IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES
   plan                    create and report active uncapped deterministic plans

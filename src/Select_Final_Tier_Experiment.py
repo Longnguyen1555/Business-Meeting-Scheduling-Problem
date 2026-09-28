@@ -12,6 +12,9 @@ from Journal_Experiment import read_config
 from Validate_Journal_Run import validate_campaign
 
 
+DEFAULT_FINAL_TIER_BASELINE = "compact_cdf_ir_im_is"
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as stream:
         return json.load(stream)
@@ -86,24 +89,32 @@ def build_final_tier_config(
     main_config: dict[str, Any],
     main_plan: dict[str, Any],
     rows: list[dict[str, Any]],
+    *,
+    baseline_configuration_id: str = DEFAULT_FINAL_TIER_BASELINE,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     timeout = float(main_plan["timeout_seconds"])
     ranking = rank_ir_im_is_configurations(rows, timeout_seconds=timeout)
     if not ranking:
         raise ValueError("main campaign contains no IR-IM-IS result rows")
-    selected_id = ranking[0]["configuration_id"]
-    selected: dict[str, Any] | None = None
+    available_ids = {item["configuration_id"] for item in ranking}
+    if baseline_configuration_id not in available_ids:
+        raise ValueError(
+            f"final-tier baseline {baseline_configuration_id!r} has no "
+            "IR-IM-IS result rows"
+        )
+    baseline_id = baseline_configuration_id
+    baseline: dict[str, Any] | None = None
     for job in main_plan["jobs"]:
         configuration = job["configuration"]
-        if configuration["id"] == selected_id:
-            selected = dict(configuration)
+        if configuration["id"] == baseline_id:
+            baseline = dict(configuration)
             break
-    if selected is None:
-        raise ValueError(f"selected configuration {selected_id!r} is absent from plan")
+    if baseline is None:
+        raise ValueError(f"baseline configuration {baseline_id!r} is absent from plan")
 
     ir_im_isq = dict(
-        selected,
-        id="selected_model_ir_im_isq",
+        baseline,
+        id="compact_cdf_ir_im_isq",
         objective_mode="ir_im_isq",
     )
     repetitions = 3
@@ -114,9 +125,9 @@ def build_final_tier_config(
         "schema_version": 1,
         "campaign_name": "journal-final-tier-isq-only-v1",
         "description": (
-            "Uncapped IR-IM-ISQ on the model selected from the primary "
-            "IR-IM-IS campaign; existing main-campaign IR-IM-IS rows are "
-            "reused as the comparison baseline."
+            "Uncapped IR-IM-ISQ on the prespecified Compact C+D+F model; "
+            "existing main-campaign IR-IM-IS rows are reused as the "
+            "comparison baseline."
         ),
         "timeout_seconds": timeout,
         "controller_grace_seconds": float(
@@ -131,7 +142,7 @@ def build_final_tier_config(
         "datasets": list(main_config["datasets"]),
         "blocks": [
             {
-                "id": "selected_model_final_tier_comparison",
+                "id": "compact_final_tier_comparison",
                 "datasets": [item["id"] for item in main_config["datasets"]],
                 "repetitions": repetitions,
                 "configurations": [ir_im_isq],
@@ -140,11 +151,11 @@ def build_final_tier_config(
         "selection_provenance": {
             "source_campaign_id": main_plan["campaign_id"],
             "source_plan_sha256": main_plan["plan_sha256"],
-            "selected_configuration_id": selected_id,
+            "baseline_configuration_id": baseline_id,
             "baseline_objective_mode": "ir_im_is",
             "new_objective_mode": "ir_im_isq",
             "baseline_results_reused": True,
-            "ranking_rule": "exact_coverage_desc_then_par2_then_median_rss_then_id",
+            "selection_basis": "prespecified_compact_configuration",
         },
     }
     report = {
@@ -156,11 +167,22 @@ def build_final_tier_config(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Select the best main IR-IM-IS model and emit final-tier config."
+        description=(
+            "Validate the main campaign and emit the Compact IR-IM-ISQ "
+            "final-tier config."
+        )
     )
     parser.add_argument("--main-output", required=True, type=Path)
     parser.add_argument("--main-config", required=True, type=Path)
     parser.add_argument("--output-config", required=True, type=Path)
+    parser.add_argument(
+        "--baseline-configuration",
+        default=DEFAULT_FINAL_TIER_BASELINE,
+        help=(
+            "IR-IM-IS configuration reused as the final-tier baseline "
+            f"(default: {DEFAULT_FINAL_TIER_BASELINE})"
+        ),
+    )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--allow-environment-drift", action="store_true")
     return parser.parse_args()
@@ -175,13 +197,18 @@ def main() -> int:
     )
     if errors:
         raise SystemExit(
-            "ERROR: main campaign must validate before selection: "
+            "ERROR: main campaign must validate before final-tier setup: "
             + "; ".join(errors)
         )
     main_config = read_config(args.main_config)
     main_plan = _read_json(args.main_output / "plan.json")
     rows = _read_rows(args.main_output / "normalized" / "detailed.csv")
-    config, report = build_final_tier_config(main_config, main_plan, rows)
+    config, report = build_final_tier_config(
+        main_config,
+        main_plan,
+        rows,
+        baseline_configuration_id=args.baseline_configuration,
+    )
     args.output_config.parent.mkdir(parents=True, exist_ok=True)
     args.output_config.write_text(
         json.dumps(config, indent=2, ensure_ascii=False) + "\n",
@@ -192,7 +219,15 @@ def main() -> int:
         json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
         encoding="utf-8",
     )
-    print(f"selected_configuration={report['selected_configuration_id']}")
+    print(f"baseline_configuration={report['baseline_configuration_id']}")
+    for position, score in enumerate(report["ranking"], start=1):
+        print(
+            "observed_rank="
+            f"{position} configuration={score['configuration_id']} "
+            f"exact={score['exact_runs']}/{score['runs']} "
+            f"par2_seconds={score['par2_seconds']:.6f} "
+            f"median_peak_memory_mb={score['median_peak_memory_mb']}"
+        )
     print(f"wrote_config={args.output_config}")
     print(f"wrote_selection_report={report_path}")
     return 0
