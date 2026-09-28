@@ -6,6 +6,7 @@
   "cpu_governor": "",
   "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
   "created_utc": "2026-09-18T13:58:23+00:00",
+  "environment_drift_accepted": true,
   "execution_shard_count": 2,
   "execution_shard_indices": [
     1
@@ -37,6 +38,31 @@
     "threads_per_run": 1
   },
   "requirements_sha256": "eb476d496e6ecfd24b7be12241223728248d54b86d22f5b4556720334acec7a1",
+  "resume_environment_history": [
+    {
+      "accepted_machine_profile_errors": [],
+      "accepted_mismatches": [
+        "git commit",
+        "UWrMaxSAT SHA-256",
+        "Python version",
+        "kernel release",
+        "system memory"
+      ],
+      "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+      "git_commit": "7017ed562dfdb2ff19c8c735d4a3c081274aa3f1",
+      "git_dirty": true,
+      "kernel_release": "6.8.0-1069-gcp",
+      "logical_cpu_cores": 8,
+      "physical_cpu_cores": 4,
+      "python_executable": "/home/g24021555/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python",
+      "python_version": "3.10.12",
+      "resumed_utc": "2026-09-27T09:57:52+00:00",
+      "swap_memory_mb": 0.0,
+      "system_memory_mb": 15988.055,
+      "uwrmaxsat_binary": "/home/g24021555/uwrmaxsat/build/release/bin/uwrmaxsat",
+      "uwrmaxsat_sha256": "82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202"
+    }
+  ],
   "runner_command": "/home/vudangducminh/journal/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python /home/vudangducminh/journal/Business-Meeting-Scheduling-Problem/src/Journal_Experiment.py --config journal_configs/compact_objectives.json --output-dir /home/vudangducminh/outputs/journal/compact-objectives/shard-1-of-2 --uwrmaxsat-bin /home/vudangducminh/solvers/uwrmaxsat --uwrmaxsat-sha256 84fbd879008c3b4f0c5122c8ae6ba51d97e86a4b40867db8cc063a5b2a50547d --allow-dirty --shard-count 2 --shard-index 1",
   "swap_memory_mb": 0.0,
   "system_memory_mb": 15983.285,
