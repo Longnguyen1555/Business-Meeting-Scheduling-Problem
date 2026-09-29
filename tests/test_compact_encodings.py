@@ -110,7 +110,13 @@ class CompactObjectiveEncodingTests(unittest.TestCase):
 
     def test_adaptive_commander_preserves_all_objective_optima(self) -> None:
         instance = _large_collision_instance()
-        for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+        for objective_mode in (
+            "ir",
+            "bg_d2",
+            "bg_dinf",
+            "ir_is",
+            "bg_ir_is",
+        ):
             results = [
                 B2BMaxSATSolver(
                     instance,
@@ -168,7 +174,13 @@ class CompactObjectiveEncodingTests(unittest.TestCase):
             "direct_range_soft",
             "optimized",
         )
-        for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+        for objective_mode in (
+            "ir",
+            "bg_d2",
+            "bg_dinf",
+            "ir_is",
+            "bg_ir_is",
+        ):
             for preset in presets:
                 model = B2BSATModel(
                     instance,

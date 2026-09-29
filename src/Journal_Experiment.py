@@ -310,6 +310,7 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
         if configuration.get("objective_mode") not in {
             "ir",
             "bg_d2",
+            "bg_dinf",
             "ir_is",
             "ir_im_is",
             "ir_im_isq",

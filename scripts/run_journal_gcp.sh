@@ -324,6 +324,9 @@ case "$command" in
   main-objectives-smoke)
     run_campaign main_objectives_smoke main-objectives-smoke
     ;;
+  bg-dinf-quality-smoke)
+    run_campaign bg_dinf_quality_smoke bg-dinf-quality-smoke
+    ;;
   all126-first-smoke)
     smoke_output=all126-first-smoke
     if [[ -n "$shard_label" ]]; then
@@ -402,6 +405,14 @@ case "$command" in
       --reuse-output "$compact_reuse_output" \
       "${shard_args[@]}"
     ;;
+  bg-dinf-quality)
+    run_warmup
+    bg_dinf_output=bg-dinf-quality
+    if [[ -n "$shard_label" ]]; then
+      bg_dinf_output="$bg_dinf_output/$shard_label"
+    fi
+    run_campaign bg_dinf_quality "$bg_dinf_output" "${shard_args[@]}"
+    ;;
   final-tier)
     main_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives}
     final_config="$OUTPUT_ROOT/final-tier-compact.json"
@@ -452,6 +463,7 @@ case "$command" in
     plan_campaign compact_f_ablation compact-f-ablation
     plan_campaign compact_objectives compact-objectives
     plan_campaign main_objectives main-objectives
+    plan_campaign bg_dinf_quality bg-dinf-quality
     plan_campaign generated_core generated-development \
       --only-block e5_generated_development
     plan_campaign generated_core generated-heldout \
@@ -490,6 +502,7 @@ Commands:
   compact-objectives-smoke  two-input A/C/D/F x objective gate (30 runs)
   cap-sensitivity-smoke   deferred optional two-input cap-alpha gate (6 runs)
   main-objectives-smoke   two-input 2-model x 3-objective gate (12 runs)
+  bg-dinf-quality-smoke   two-input Compact BG-d-infinity gate (2 runs)
   all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
   all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
   all126-first            T1-T3 All-126, repetition 1 only (1,638 runs)
@@ -502,6 +515,7 @@ Commands:
   compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
   cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
   main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
+  bg-dinf-quality         Compact BG-d-infinity x All-126 x 1 rep (126 runs)
   final-tier              run Compact C+D+F IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES

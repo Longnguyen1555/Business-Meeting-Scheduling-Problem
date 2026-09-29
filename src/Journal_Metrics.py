@@ -90,6 +90,7 @@ def evaluate_journal_schedule(
     vectors = {
         "ir": (idle_range,),
         "bg_d2": (group_sum,),
+        "bg_dinf": (group_sum,),
         "ir_is": (idle_range, idle_sum),
         "ir_im_is": (idle_range, max(pstar_values, default=0), idle_sum),
         "ir_im_isq": (

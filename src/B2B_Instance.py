@@ -20,6 +20,7 @@ DomainMode = Literal["full", "reduced"]
 ObjectiveMode = Literal[
     "ir",
     "bg_d2",
+    "bg_dinf",
     "ir_is",
     "ir_im_is",
     "ir_im_isq",
@@ -47,6 +48,7 @@ VALID_DOMAIN_MODES = {"full", "reduced"}
 VALID_OBJECTIVE_MODES = {
     "ir",
     "bg_d2",
+    "bg_dinf",
     "ir_is",
     "ir_im_is",
     "ir_im_isq",
@@ -984,6 +986,7 @@ def compute_solution_stats(
     objective_vectors = {
         "ir": (objective_gap,),
         "bg_d2": (total_break_groups,),
+        "bg_dinf": (total_break_groups,),
         "ir_is": (objective_gap, total_idle),
         "ir_im_is": (
             objective_gap,
@@ -1710,6 +1713,7 @@ class B2BSATModel:
                 "isq": "exact_idle_span_threshold_odd_weights",
                 "im_is": "exact_idle_maximum_threshold_then_sum",
                 "bg_d2": "exact_break_group_threshold_range_cap_d2",
+                "bg_dinf": "exact_break_group_sum_without_homogeneity",
                 "bg_ir_is": (
                     "exact_break_group_sum_then_idle_range_then_idle_sum"
                 ),
@@ -2606,7 +2610,11 @@ class B2BSATModel:
             "isq",
             "im_is",
         }
-        needs_groups = self.objective_mode in {"bg_d2", "bg_ir_is"}
+        needs_groups = self.objective_mode in {
+            "bg_d2",
+            "bg_dinf",
+            "bg_ir_is",
+        }
         use_certified_bg = (
             self.objective_mode == "bg_d2"
             and "certified_bg" in self.compact_encoding_features
@@ -2652,7 +2660,10 @@ class B2BSATModel:
         if needs_groups:
             group_ends, group_thresholds = self._add_break_group_thresholds(
                 cnf,
-                include_thresholds=not use_certified_bg,
+                include_thresholds=(
+                    not use_certified_bg
+                    and self.objective_mode != "bg_dinf"
+                ),
             )
 
         idle_sum_lits = [
@@ -2660,10 +2671,13 @@ class B2BSATModel:
             for participant in self.objective_participants
             for literal in idle_thresholds[participant]
         ]
+        use_direct_group_cost = (
+            use_certified_bg or self.objective_mode == "bg_dinf"
+        )
         group_sum_lits = [
             literal
             for participant_values in (
-                group_ends if use_certified_bg else group_thresholds
+                group_ends if use_direct_group_cost else group_thresholds
             )
             for literal in participant_values
         ]
@@ -2702,6 +2716,16 @@ class B2BSATModel:
                 if use_certified_bg
                 else "total_break_groups_subject_to_range_at_most_2"
             )
+        elif self.objective_mode == "bg_dinf":
+            tiers = (
+                ObjectiveTier(
+                    "total_break_groups",
+                    tuple(group_sum_lits),
+                    len(group_sum_lits),
+                    1,
+                ),
+            )
+            name = "total_break_groups_without_homogeneity"
         elif self.objective_mode == "is":
             tiers = (ObjectiveTier("total_internal_idle_slots", tuple(idle_sum_lits), len(idle_sum_lits), 1),)
             name = "total_internal_idle_slots"

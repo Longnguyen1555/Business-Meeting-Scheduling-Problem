@@ -100,6 +100,7 @@ VARIANT_FACTOR_NAMES = {
 OBJECTIVE_CODES = {
     "ir": "IRP",
     "bg_d2": "BGD2",
+    "bg_dinf": "BGDINF",
     "ir_is": "IRIS",
     "ir_im_is": "IRIMIS",
     "ir_im_isq": "IRIMISQ",
@@ -111,6 +112,7 @@ OBJECTIVE_CODES = {
 OBJECTIVE_NAMES = {
     "ir": "IdleRangePstar",
     "bg_d2": "BreakGroupsD2",
+    "bg_dinf": "BreakGroupsDInfinity",
     "ir_is": "IdleRangeThenIdleSum",
     "ir_im_is": "IdleRangeThenMaximumIdleThenIdleSum",
     "ir_im_isq": "IdleRangeThenMaximumIdleThenSquaredIdleSum",
@@ -122,6 +124,7 @@ OBJECTIVE_NAMES = {
 OBJECTIVE_KEYS = {
     "ir": "idle_range_pstar",
     "bg_d2": "break_groups_d2",
+    "bg_dinf": "break_groups_d_infinity",
     "ir_is": "idle_range_then_idle_sum",
     "ir_im_is": "idle_range_maximum_idle_sum",
     "ir_im_isq": "idle_range_maximum_squared_idle_sum",
@@ -282,7 +285,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=OBJECTIVE_MODES,
         default="ir",
         help=(
-            "ir preserves conference behavior; bg_d2, ir_is, ir_im_is, "
+            "ir preserves conference behavior; bg_d2, bg_dinf, ir_is, ir_im_is, "
             "ir_im_isq, bg_ir_is, is, isq and im_is are journal modes"
         ),
     )
@@ -895,8 +898,8 @@ def solver_compact_configurations(
     if solver_name in EXACT_SOLVERS:
         return ["reference"]
     candidates = selected(args.compact_encoding, COMPACT_ENCODINGS)
-    if args.objective_mode == "bg_d2":
-        # D is an idle-range MaxSAT refinement and has no effect on BG-d2.
+    if args.objective_mode in {"bg_d2", "bg_dinf"}:
+        # D is an idle-range MaxSAT refinement and has no effect on break-only modes.
         return [value for value in candidates if value != "direct_range_soft"]
     if solver_name != "maxsat" and args.objective_mode in {
         "ir",

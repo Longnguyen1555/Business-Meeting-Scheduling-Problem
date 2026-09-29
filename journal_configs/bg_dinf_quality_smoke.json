@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-bg-dinf-quality-smoke-v1",
+  "description": "Two-input smoke test for the Compact BG-d-infinity quality control.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 30,
+  "run_order_seed": 20260929,
+  "require_clean_worktree": false,
+  "expected_job_count": 2,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "original",
+      "max_instances": 2
+    }
+  ],
+  "blocks_from": "bg_dinf_quality_blocks.json"
+}
