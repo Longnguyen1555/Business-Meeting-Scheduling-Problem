@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "campaign_name": "journal-conference-reference-v1",
-  "description": "Conference compact backbone x BG-d2, IR, and uncapped IR-IM-IS x 126 instances x 3 repetitions; repetition 1 is reused from the compact-objective campaign.",
+  "description": "Conference compact backbone x BG-d2, IR, and uncapped IR-IM-IS x 126 instances x 3 repetitions; all three repetition-1 cells plus independent historical BG-d2 and IR repetition-2 cells are reused.",
   "timeout_seconds": 7200,
   "controller_grace_seconds": 120,
   "run_order_seed": 20260915,
@@ -53,6 +53,24 @@
       "target_block_id": "conference_reference_three_objectives",
       "target_configuration_id": "conference_ir_im_is_adapted",
       "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-conference-historical-reuse-v1",
+      "source_block_id": "conference_historical_reuse",
+      "source_configuration_id": "historical_bg_d2_reference",
+      "source_repetition": 1,
+      "target_block_id": "conference_reference_three_objectives",
+      "target_configuration_id": "conference_bg_d2_adapted",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-conference-historical-reuse-v1",
+      "source_block_id": "conference_historical_reuse",
+      "source_configuration_id": "historical_ir_reference",
+      "source_repetition": 1,
+      "target_block_id": "conference_reference_three_objectives",
+      "target_configuration_id": "conference_ir",
+      "target_repetition": 2
     }
   ],
   "blocks_from": "conference_reference_blocks.json"

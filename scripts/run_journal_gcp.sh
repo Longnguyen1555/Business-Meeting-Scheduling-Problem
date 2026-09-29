@@ -42,6 +42,14 @@ if [[ "${1:-}" == "merge-shards" ]]; then
   exec "$merge_python" src/Merge_Journal_Shards.py "$@"
 fi
 
+# Historical reuse preparation is solver-free and verifies every archived row
+# against the checked-in current reference results before writing an archive.
+if [[ "${1:-}" == "prepare-conference-reuse" ]]; then
+  prepare_python=${PLAN_PYTHON:-python3}
+  exec "$prepare_python" src/Prepare_Conference_Reuse.py \
+    --output "${CONFERENCE_HISTORICAL_REUSE_OUTPUT:-${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/conference-historical-reuse}"
+fi
+
 ENV_FILE=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: copy journal_gcp.env.example to $ENV_FILE and fill the pins" >&2
@@ -410,13 +418,14 @@ case "$command" in
     ;;
   conference-reference)
     if [[ "$ALLOW_DIRTY" != "1" || "$ALLOW_ENVIRONMENT_DRIFT" != "1" ]]; then
-      echo "ERROR: conference-reference reuses the approved mixed-environment repetition 1" >&2
+      echo "ERROR: conference-reference reuses approved mixed-environment and historical repetitions" >&2
       echo "ERROR: set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record that approval" >&2
       exit 2
     fi
     run_warmup
     conference_reference_output=conference-reference
     compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-}
+    historical_reuse_output=${CONFERENCE_HISTORICAL_REUSE_OUTPUT:-$OUTPUT_ROOT/conference-historical-reuse}
     if [[ -n "$shard_label" ]]; then
       conference_reference_output="$conference_reference_output/$shard_label"
       if [[ -z "$compact_reuse_output" ]]; then
@@ -435,8 +444,13 @@ case "$command" in
       echo "ERROR: merge compact-objectives or set COMPACT_OBJECTIVES_OUTPUT" >&2
       exit 2
     fi
+    if [[ ! -f "$historical_reuse_output/plan.json" ]]; then
+      "$PYTHON" src/Prepare_Conference_Reuse.py \
+        --output "$historical_reuse_output"
+    fi
     run_campaign conference_reference "$conference_reference_output" \
       --reuse-output "$compact_reuse_output" \
+      --reuse-output "$historical_reuse_output" \
       "${shard_args[@]}"
     ;;
   bg-dinf-quality)
@@ -551,7 +565,8 @@ Commands:
   compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
   cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
   main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
-  conference-reference    conference backbone x 3 objectives x 3 reps (378 reused; 756 new)
+  prepare-conference-reuse audit/build the 252-row BG-d2/IR historical archive
+  conference-reference    conference backbone x 3 objectives x 3 reps (630 reused; 504 new)
   bg-dinf-quality         Compact BG-d-infinity x All-126 x 1 rep (126 runs)
   final-tier              run Compact C+D+F IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
@@ -568,8 +583,9 @@ main-objectives requires the matching compact-objectives output and reuses its
 three selected repetition-1 cells. Set COMPACT_OBJECTIVES_OUTPUT only when the
 source is outside the default matching shard/output directory.
 conference-reference reuses the three reference repetition-1 cells from the
-same source. Set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record the
-approved equivalence of their source environments.
+compact source plus audited historical BG-d2 and IR repetition-2 cells. It
+builds the historical archive if needed. Set ALLOW_DIRTY=1 and
+ALLOW_ENVIRONMENT_DRIFT=1 to record the approved source provenance.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
 Set ALLOW_ENVIRONMENT_DRIFT=1 only when deliberately resuming an unchanged
 plan after a VM, Git commit, Python/kernel, or pinned solver-binary change.

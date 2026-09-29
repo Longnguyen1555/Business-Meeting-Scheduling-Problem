@@ -38,6 +38,7 @@ class JournalExperimentTests(unittest.TestCase):
             "main_objectives_smoke.json": 12,
             "conference_reference.json": 1134,
             "conference_reference_smoke.json": 6,
+            "conference_historical_reuse.json": 252,
         }
         plans = {}
         for name, count in expected.items():
@@ -69,7 +70,7 @@ class JournalExperimentTests(unittest.TestCase):
         self.assertEqual(main_plan["job_count"] - reused_main_jobs, 1890)
 
         _, conference_plan = plans["conference_reference.json"]
-        self.assertEqual(len(conference_plan["reuse_results"]), 3)
+        self.assertEqual(len(conference_plan["reuse_results"]), 5)
         reused_conference_cells = {
             (
                 rule["target_block_id"],
@@ -87,16 +88,18 @@ class JournalExperimentTests(unittest.TestCase):
             in reused_conference_cells
             for job in conference_plan["jobs"]
         )
-        self.assertEqual(reused_conference_jobs, 378)
-        self.assertEqual(conference_plan["job_count"] - reused_conference_jobs, 756)
+        self.assertEqual(reused_conference_jobs, 630)
+        self.assertEqual(conference_plan["job_count"] - reused_conference_jobs, 504)
         compact_plan = plans["compact_objectives.json"][1]
-        compact_cells = {
+        historical_plan = plans["conference_historical_reuse.json"][1]
+        source_cells = {
             (
                 job["experiment_block"],
                 job["planned_configuration_id"],
                 job["repetition"],
             ): job["configuration"]
-            for job in compact_plan["jobs"]
+            for source_plan in (compact_plan, historical_plan)
+            for job in source_plan["jobs"]
         }
         conference_cells = {
             (
@@ -107,7 +110,7 @@ class JournalExperimentTests(unittest.TestCase):
             for job in conference_plan["jobs"]
         }
         for rule in conference_plan["reuse_results"]:
-            source = compact_cells[
+            source = source_cells[
                 (
                     rule["source_block_id"],
                     rule["source_configuration_id"],

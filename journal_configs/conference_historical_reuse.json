@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-conference-historical-reuse-v1",
+  "description": "Audited archive of one independent BG-d2 reference repetition and the published conference IR repetition. The archive is generated from immutable recorded rows only after formula-identity checks against the current reference encoding.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260916,
+  "require_clean_worktree": false,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "expected_job_count": 252,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "conference_historical_reuse",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "id": "historical_bg_d2_reference",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "historical_ir_reference",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}
