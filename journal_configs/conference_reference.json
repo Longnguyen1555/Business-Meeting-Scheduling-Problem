@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-conference-reference-v1",
+  "description": "Conference compact backbone x BG-d2, IR, and uncapped IR-IM-IS x 126 instances x 3 repetitions; repetition 1 is reused from the compact-objective campaign.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260915,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "expected_job_count": 1134,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "reuse_results": [
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_bg_d2_ablation",
+      "source_configuration_id": "bg_reference",
+      "source_repetition": 1,
+      "target_block_id": "conference_reference_three_objectives",
+      "target_configuration_id": "conference_bg_d2_adapted",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_ablation",
+      "source_configuration_id": "ir_reference",
+      "source_repetition": 1,
+      "target_block_id": "conference_reference_three_objectives",
+      "target_configuration_id": "conference_ir",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_im_is_ablation",
+      "source_configuration_id": "irimis_reference",
+      "source_repetition": 1,
+      "target_block_id": "conference_reference_three_objectives",
+      "target_configuration_id": "conference_ir_im_is_adapted",
+      "target_repetition": 1
+    }
+  ],
+  "blocks_from": "conference_reference_blocks.json"
+}

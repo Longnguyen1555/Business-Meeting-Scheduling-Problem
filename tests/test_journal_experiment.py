@@ -36,6 +36,8 @@ class JournalExperimentTests(unittest.TestCase):
             "idle_cap_sensitivity_smoke.json": 6,
             "main_objectives.json": 2268,
             "main_objectives_smoke.json": 12,
+            "conference_reference.json": 1134,
+            "conference_reference_smoke.json": 6,
         }
         plans = {}
         for name, count in expected.items():
@@ -65,6 +67,85 @@ class JournalExperimentTests(unittest.TestCase):
         )
         self.assertEqual(reused_main_jobs, 378)
         self.assertEqual(main_plan["job_count"] - reused_main_jobs, 1890)
+
+        _, conference_plan = plans["conference_reference.json"]
+        self.assertEqual(len(conference_plan["reuse_results"]), 3)
+        reused_conference_cells = {
+            (
+                rule["target_block_id"],
+                rule["target_configuration_id"],
+                rule["target_repetition"],
+            )
+            for rule in conference_plan["reuse_results"]
+        }
+        reused_conference_jobs = sum(
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            )
+            in reused_conference_cells
+            for job in conference_plan["jobs"]
+        )
+        self.assertEqual(reused_conference_jobs, 378)
+        self.assertEqual(conference_plan["job_count"] - reused_conference_jobs, 756)
+        compact_plan = plans["compact_objectives.json"][1]
+        compact_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for job in compact_plan["jobs"]
+        }
+        conference_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for job in conference_plan["jobs"]
+        }
+        for rule in conference_plan["reuse_results"]:
+            source = compact_cells[
+                (
+                    rule["source_block_id"],
+                    rule["source_configuration_id"],
+                    rule["source_repetition"],
+                )
+            ]
+            target = conference_cells[
+                (
+                    rule["target_block_id"],
+                    rule["target_configuration_id"],
+                    rule["target_repetition"],
+                )
+            ]
+            self.assertEqual(
+                {key: value for key, value in source.items() if key != "id"},
+                {key: value for key, value in target.items() if key != "id"},
+            )
+        conference_configs = {
+            job["planned_configuration_id"]: job["configuration"]
+            for job in conference_plan["jobs"]
+        }
+        self.assertEqual(
+            set(conference_configs),
+            {
+                "conference_bg_d2_adapted",
+                "conference_ir",
+                "conference_ir_im_is_adapted",
+            },
+        )
+        for configuration in conference_configs.values():
+            self.assertEqual(configuration["compact_encoding"], "reference")
+            self.assertEqual(configuration["collision_amo"], "pairwise")
+            self.assertEqual(configuration["domain_mode"], "reduced")
+            self.assertEqual(
+                configuration["domain_filter_graph"], "distance_closure"
+            )
+            self.assertEqual(configuration["precedence_encoding"], "sparse_suffix")
+            self.assertEqual(configuration["precedence_graph"], "distance_closure")
         main_ir_im_is_caps = {
             job["planned_configuration_id"]: job["configuration"].get(
                 "participant_idle_cap_rule", "none"

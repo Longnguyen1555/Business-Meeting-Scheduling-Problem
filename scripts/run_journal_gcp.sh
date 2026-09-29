@@ -324,6 +324,9 @@ case "$command" in
   main-objectives-smoke)
     run_campaign main_objectives_smoke main-objectives-smoke
     ;;
+  conference-reference-smoke)
+    run_campaign conference_reference_smoke conference-reference-smoke
+    ;;
   bg-dinf-quality-smoke)
     run_campaign bg_dinf_quality_smoke bg-dinf-quality-smoke
     ;;
@@ -405,6 +408,37 @@ case "$command" in
       --reuse-output "$compact_reuse_output" \
       "${shard_args[@]}"
     ;;
+  conference-reference)
+    if [[ "$ALLOW_DIRTY" != "1" || "$ALLOW_ENVIRONMENT_DRIFT" != "1" ]]; then
+      echo "ERROR: conference-reference reuses the approved mixed-environment repetition 1" >&2
+      echo "ERROR: set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record that approval" >&2
+      exit 2
+    fi
+    run_warmup
+    conference_reference_output=conference-reference
+    compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-}
+    if [[ -n "$shard_label" ]]; then
+      conference_reference_output="$conference_reference_output/$shard_label"
+      if [[ -z "$compact_reuse_output" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives/$shard_label"
+      fi
+    elif [[ -z "$compact_reuse_output" ]]; then
+      if [[ -d "$OUTPUT_ROOT/compact-objectives-merged" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives-merged"
+      else
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives"
+      fi
+    fi
+    if [[ ! -f "$compact_reuse_output/plan.json" ]]; then
+      echo "ERROR: conference-reference reuses compact-objectives repetition 1" >&2
+      echo "ERROR: missing reuse source $compact_reuse_output" >&2
+      echo "ERROR: merge compact-objectives or set COMPACT_OBJECTIVES_OUTPUT" >&2
+      exit 2
+    fi
+    run_campaign conference_reference "$conference_reference_output" \
+      --reuse-output "$compact_reuse_output" \
+      "${shard_args[@]}"
+    ;;
   bg-dinf-quality)
     run_warmup
     bg_dinf_output=bg-dinf-quality
@@ -463,6 +497,7 @@ case "$command" in
     plan_campaign compact_f_ablation compact-f-ablation
     plan_campaign compact_objectives compact-objectives
     plan_campaign main_objectives main-objectives
+    plan_campaign conference_reference conference-reference
     plan_campaign bg_dinf_quality bg-dinf-quality
     plan_campaign generated_core generated-development \
       --only-block e5_generated_development
@@ -502,6 +537,7 @@ Commands:
   compact-objectives-smoke  two-input A/C/D/F x objective gate (30 runs)
   cap-sensitivity-smoke   deferred optional two-input cap-alpha gate (6 runs)
   main-objectives-smoke   two-input 2-model x 3-objective gate (12 runs)
+  conference-reference-smoke  two-input conference-backbone x 3-objective gate (6 runs)
   bg-dinf-quality-smoke   two-input Compact BG-d-infinity gate (2 runs)
   all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
   all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
@@ -515,6 +551,7 @@ Commands:
   compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
   cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
   main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
+  conference-reference    conference backbone x 3 objectives x 3 reps (378 reused; 756 new)
   bg-dinf-quality         Compact BG-d-infinity x All-126 x 1 rep (126 runs)
   final-tier              run Compact C+D+F IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
@@ -530,6 +567,9 @@ between VMs. Shard indices are zero-based.
 main-objectives requires the matching compact-objectives output and reuses its
 three selected repetition-1 cells. Set COMPACT_OBJECTIVES_OUTPUT only when the
 source is outside the default matching shard/output directory.
+conference-reference reuses the three reference repetition-1 cells from the
+same source. Set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record the
+approved equivalence of their source environments.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
 Set ALLOW_ENVIRONMENT_DRIFT=1 only when deliberately resuming an unchanged
 plan after a VM, Git commit, Python/kernel, or pinned solver-binary change.
