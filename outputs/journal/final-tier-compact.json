@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-final-tier-isq-only-v1",
+  "description": "Uncapped IR-IM-ISQ on the prespecified Compact C+D+F model; existing main-campaign IR-IM-IS rows are reused as the comparison baseline.",
+  "timeout_seconds": 7200.0,
+  "controller_grace_seconds": 120.0,
+  "run_order_seed": 20260916,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "expected_job_count": 378,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "compact_final_tier_comparison",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "collision_amo": "adaptive_commander",
+          "compact_encoding": "optimized",
+          "domain_filter_graph": "distance_closure",
+          "domain_mode": "reduced",
+          "encoding_variant": "imp12+",
+          "executor": "main",
+          "id": "compact_cdf_ir_im_isq",
+          "maxsat_backend": "uwrmaxsat",
+          "objective_mode": "ir_im_isq",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "sat_backend": "cadical",
+          "solver": "maxsat"
+        }
+      ]
+    }
+  ],
+  "selection_provenance": {
+    "source_campaign_id": "journal-main-objectives-v1",
+    "source_plan_sha256": "198e0a188f5c34bf698e1a89805124af5d04cd36118057fc28941530fc496389",
+    "baseline_configuration_id": "compact_cdf_ir_im_is",
+    "baseline_objective_mode": "ir_im_is",
+    "new_objective_mode": "ir_im_isq",
+    "baseline_results_reused": true,
+    "selection_basis": "prespecified_compact_configuration"
+  }
+}

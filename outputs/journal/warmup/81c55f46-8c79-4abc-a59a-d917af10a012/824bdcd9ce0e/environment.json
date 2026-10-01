@@ -1,0 +1,45 @@
+{
+  "boot_id": "81c55f46-8c79-4abc-a59a-d917af10a012",
+  "campaign_id": "journal-machine-warmup-v1",
+  "config_path": "journal_configs/warmup.json",
+  "config_sha256": "5bcaadbaad19c5c93f8cb598834063c5a815d3dc6b48321fa52820e6f7cefb70",
+  "cpu_governor": "",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+  "created_utc": "2026-09-29T06:54:31+00:00",
+  "execution_shard_count": 1,
+  "execution_shard_indices": [
+    0
+  ],
+  "execution_shard_policy": "content_rank_round_robin_v1",
+  "git_commit": "824bdcd9ce0ed2005e868f4da276a2e6a8c65720",
+  "git_dirty": true,
+  "hostname": "instance-20260929-033652",
+  "kernel_release": "6.8.0-1069-gcp",
+  "logical_cpu_cores": 8,
+  "manifest_sha256": {
+    "instances_manifest.csv": "42f85eaadecf187016397f0c1e7bb04bc871d45fe6ef1d90e17c9bd1b4d77ed0"
+  },
+  "physical_cpu_cores": 4,
+  "plan_sha256": "bdb09a768d307a17a4efc497416347fe268839d542d9bd28d65db9ecee8cb424",
+  "platform": "Linux-6.8.0-1069-gcp-x86_64-with-glibc2.35",
+  "python_executable": "/home/duc933827/Business-Meeting-Scheduling-Problem/.venv/bin/python",
+  "python_version": "3.10.12",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "requirements_sha256": "eb476d496e6ecfd24b7be12241223728248d54b86d22f5b4556720334acec7a1",
+  "runner_command": "/home/duc933827/Business-Meeting-Scheduling-Problem/.venv/bin/python /home/duc933827/Business-Meeting-Scheduling-Problem/src/Journal_Experiment.py --config journal_configs/warmup.json --output-dir /home/duc933827/Business-Meeting-Scheduling-Problem/outputs/journal/warmup/81c55f46-8c79-4abc-a59a-d917af10a012/824bdcd9ce0e --uwrmaxsat-bin /home/duc933827/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 f1d9885e69b792606a6cb8903b13f758552015b6e52c3cb6715703eb519fa511 --allow-dirty --allow-environment-drift",
+  "swap_memory_mb": 0.0,
+  "system_memory_mb": 15988.062,
+  "uwrmaxsat_binary": "/home/duc933827/uwrmaxsat/build/release/bin/uwrmaxsat",
+  "uwrmaxsat_sha256": "f1d9885e69b792606a6cb8903b13f758552015b6e52c3cb6715703eb519fa511"
+}
