@@ -5,6 +5,10 @@ For the current **1,638-run All-126 first repetition**, see
 
 This repository implements the conference formulation and the journal
 objective extension of the Business-to-Business Meeting Scheduling Problem.
+Source code is available under the [MIT License](LICENSE). Author-generated
+experimental records and analysis outputs are available under
+[CC BY 4.0](DATA_LICENSE.md); the source benchmark instances retain their
+original terms.
 The backward-compatible default objective is
 
 \[
