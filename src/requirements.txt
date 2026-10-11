@@ -1,2 +1,2 @@
-python-sat==1.8.dev26
+python-sat==1.8.dev25
 psutil==7.2.2
