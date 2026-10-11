@@ -304,6 +304,15 @@ for instance_spec in instance_specs:
             lines = f.readlines()
         
         # Read the initial variables
+        # Skip leading DZN comments and blank lines.
+        while lines and (
+            not lines[0].strip()
+            or lines[0].lstrip().startswith(("%", "//"))
+        ):
+            lines.pop(0)
+
+        if not lines:
+            raise ValueError("DZN file contains no data after comments")
         nBusiness = int(lines[0].split('=')[1].strip().rstrip(';'))
         nMeetings = int(lines[1].split('=')[1].strip().rstrip(';'))
         nTables = int(lines[2].split('=')[1].strip().rstrip(';'))
