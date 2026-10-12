@@ -20,8 +20,21 @@ cd "$PROJECT_DIR"
 
 ENV_FILE=${JOURNAL_ENV_FILE:-"$PROJECT_DIR/journal_gcp.env"}
 [[ -f "$ENV_FILE" ]] || { echo "ERROR: missing $ENV_FILE" >&2; exit 2; }
+
+# Preserve explicit overrides supplied when launching this session.
+RETRY_ERRORS_OVERRIDE=${RETRY_ERRORS-}
+DRIFT_OVERRIDE=${ALLOW_ENVIRONMENT_DRIFT-}
+
 # shellcheck disable=SC1090
 source "$ENV_FILE"
+
+if [[ -n "$RETRY_ERRORS_OVERRIDE" ]]; then
+  RETRY_ERRORS="$RETRY_ERRORS_OVERRIDE"
+fi
+
+if [[ -n "$DRIFT_OVERRIDE" ]]; then
+  ALLOW_ENVIRONMENT_DRIFT="$DRIFT_OVERRIDE"
+fi
 
 PYTHON="$PROJECT_DIR/${JOURNAL_VENV:-.venv-ubuntu}/bin/python"
 [[ -x "$PYTHON" ]] || { echo "ERROR: missing $PYTHON" >&2; exit 2; }

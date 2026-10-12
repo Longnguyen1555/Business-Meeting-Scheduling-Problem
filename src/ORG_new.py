@@ -470,10 +470,13 @@ for instance_spec in instance_specs:
             elif line.startswith('{'):
                 should_break = False
                 if line.endswith('},'):
-                    numbers_str = line.strip('{},') 
+                    numbers_str = line.strip('{},')
                 elif line.endswith('};') or line.endswith('}];'):
                     numbers_str = line.strip('{};]')
                     should_break = True
+                elif line.endswith('}'):
+                    # Handle the last set before a separate closing "];".
+                    numbers_str = line.strip('{}')
                 else:
                     i += 1
                     continue
