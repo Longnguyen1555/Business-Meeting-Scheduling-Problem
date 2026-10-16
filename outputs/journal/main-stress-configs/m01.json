@@ -1,0 +1,65 @@
+{
+  "blocks": [
+    {
+      "configurations": [
+        {
+          "backend": "uwrmaxsat",
+          "executor": "org_bg_d2",
+          "id": "published_2022_bg_d2",
+          "objective_mode": "bg_d2"
+        }
+      ],
+      "datasets": [
+        "stress"
+      ],
+      "id": "primary_two_models_three_objectives_stress",
+      "repetitions": 1
+    },
+    {
+      "configurations": [
+        {
+          "backend": "uwrmaxsat",
+          "executor": "org_bg_d2",
+          "id": "published_2022_bg_d2",
+          "objective_mode": "bg_d2"
+        }
+      ],
+      "datasets": [
+        "stress_high"
+      ],
+      "id": "primary_two_models_three_objectives_stress_high",
+      "repetitions": 1
+    }
+  ],
+  "campaign_name": "journal-main-stress-m01-v1",
+  "controller_grace_seconds": 120,
+  "datasets": [
+    {
+      "family": "all",
+      "id": "stress",
+      "manifest": "data_precedence_stress/instances_manifest.csv"
+    },
+    {
+      "family": "all",
+      "id": "stress_high",
+      "manifest": "data_precedence_stress_high/instances_manifest.csv"
+    }
+  ],
+  "description": "Original main configuration published_2022_bg_d2 on stress and stress_high, 1 repetition per instance, no reused results",
+  "require_clean_worktree": true,
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "run_order_seed": 20260915,
+  "schema_version": 1,
+  "timeout_seconds": 7200
+}

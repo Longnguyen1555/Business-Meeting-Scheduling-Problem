@@ -1,0 +1,84 @@
+{
+  "blocks": [
+    {
+      "configurations": [
+        {
+          "collision_amo": "pairwise",
+          "compact_encoding": "direct_range_soft",
+          "domain_filter_graph": "distance_closure",
+          "domain_mode": "reduced",
+          "encoding_variant": "imp12+",
+          "executor": "main",
+          "id": "ir_d",
+          "maxsat_backend": "uwrmaxsat",
+          "objective_mode": "ir",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "sat_backend": "cadical",
+          "solver": "maxsat"
+        }
+      ],
+      "datasets": [
+        "stress"
+      ],
+      "id": "compact_ir_ablation_stress",
+      "repetitions": 1
+    },
+    {
+      "configurations": [
+        {
+          "collision_amo": "pairwise",
+          "compact_encoding": "direct_range_soft",
+          "domain_filter_graph": "distance_closure",
+          "domain_mode": "reduced",
+          "encoding_variant": "imp12+",
+          "executor": "main",
+          "id": "ir_d",
+          "maxsat_backend": "uwrmaxsat",
+          "objective_mode": "ir",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "sat_backend": "cadical",
+          "solver": "maxsat"
+        }
+      ],
+      "datasets": [
+        "stress_high"
+      ],
+      "id": "compact_ir_ablation_stress_high",
+      "repetitions": 1
+    }
+  ],
+  "campaign_name": "journal-compact-ablation-stress-a08-v1",
+  "controller_grace_seconds": 120,
+  "datasets": [
+    {
+      "family": "all",
+      "id": "stress",
+      "manifest": "data_precedence_stress/instances_manifest.csv"
+    },
+    {
+      "family": "all",
+      "id": "stress_high",
+      "manifest": "data_precedence_stress_high/instances_manifest.csv"
+    }
+  ],
+  "description": "Compact ablation ir_d; stress + stress_high; one repetition per instance; independent execution; no reuse",
+  "expected_job_count": 100,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "run_order_seed": 20260915,
+  "schema_version": 1,
+  "timeout_seconds": 7200
+}
