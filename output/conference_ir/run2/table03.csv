@@ -1,0 +1,21 @@
+instance,precedence_encoding,precedence_graph,precedence_configuration,domain_filter_graph,solver,objective,objective_mode,compact_encoding,collision_amo,domain_mode,basic,imp1,imp2,imp12,imp12+,n/a
+forum-13.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.9 0,-
+forum-13crafb.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,2.1 2,-
+forum-13crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.9 0,-
+forum-14.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,2.5 4,-
+forumt-14.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 2,-
+forumt-14crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 2,-
+forumt-14crafd.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 2,-
+forumt-14crafe.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.5 2,-
+tic-12.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.1 0,-
+tic-12crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.2 0,-
+tic-13.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 0,-
+tic-13crafb.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 0,-
+tic-13crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.4 1,-
+tic-14crafa.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.5 0,-
+tic-14crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.5 0,-
+tic-14crafd.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.5 0,-
+ticf-13crafa.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.9 0,-
+ticf-13crafb.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,2.0 2,-
+ticf-13crafc.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,0.9 0,-
+ticf-14crafa.original,pairwise,direct,pairwise+direct,distance_closure,maxsat,internal_idle_slot_range_pstar,ir,reference,pairwise,reduced,-,-,-,-,5.3 0,-
