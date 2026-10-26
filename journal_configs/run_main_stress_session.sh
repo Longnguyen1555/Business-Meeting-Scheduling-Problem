@@ -24,6 +24,7 @@ ENV_FILE=${JOURNAL_ENV_FILE:-"$PROJECT_DIR/journal_gcp.env"}
 # Preserve explicit overrides supplied when launching this session.
 RETRY_ERRORS_OVERRIDE=${RETRY_ERRORS-}
 DRIFT_OVERRIDE=${ALLOW_ENVIRONMENT_DRIFT-}
+OUTPUT_ROOT_OVERRIDE=${OUTPUT_ROOT-}
 
 # shellcheck disable=SC1090
 source "$ENV_FILE"
@@ -34,6 +35,11 @@ fi
 
 if [[ -n "$DRIFT_OVERRIDE" ]]; then
   ALLOW_ENVIRONMENT_DRIFT="$DRIFT_OVERRIDE"
+fi
+
+# journal_gcp.env may define OUTPUT_ROOT; an explicit launch-time value wins.
+if [[ -n "$OUTPUT_ROOT_OVERRIDE" ]]; then
+  OUTPUT_ROOT="$OUTPUT_ROOT_OVERRIDE"
 fi
 
 PYTHON="$PROJECT_DIR/${JOURNAL_VENV:-.venv-ubuntu}/bin/python"
@@ -56,6 +62,16 @@ OUTPUT_ROOT=$(realpath "$OUTPUT_ROOT")
 CONFIG_DIR="$OUTPUT_ROOT/main-stress-configs"
 OUTPUT_DIR="$OUTPUT_ROOT/main-stress-sessions/${CONFIG_CODE,,}"
 CONFIG_FILE="$CONFIG_DIR/${CONFIG_CODE,,}.json"
+
+# Fail closed: never reuse an existing output directory or generated config.
+# This protects earlier results and prevents accidental resume/overwrite.
+if [[ -e "$OUTPUT_DIR" || -e "$CONFIG_FILE" ]]; then
+  echo "ERROR: rerun destination already exists." >&2
+  echo "OUTPUT_DIR=$OUTPUT_DIR" >&2
+  echo "CONFIG_FILE=$CONFIG_FILE" >&2
+  echo "Choose a new OUTPUT_ROOT; nothing was overwritten." >&2
+  exit 2
+fi
 mkdir -p "$CONFIG_DIR" "$OUTPUT_DIR"
 
 # Session-local lock; unlike scripts/run_journal_gcp.sh, does not lock all campaigns.
@@ -195,11 +211,9 @@ if [[ "${RETRY_ERRORS:-0}" == 1 ]]; then COMMON_ARGS+=(--retry-errors); fi
 import collections, json, sys
 with open(sys.argv[1], encoding='utf-8') as f:
     p = json.load(f)
-counts = collections.Counter(j['experiment_block'].rsplit('_', 1)[-1]
-                             for j in p['jobs'])
+blocks = collections.Counter(j['experiment_block'] for j in p['jobs'])
 # Do not infer the dataset from content family, because both manifests may
 # use the same family label. The block ID explicitly records the dataset.
-blocks = collections.Counter(j['experiment_block'] for j in p['jobs'])
 assert len(blocks) == 2, f'Expected both datasets, got: {blocks}'
 assert all(j['repetition'] == 1 for j in p['jobs'])
 assert len({j['planned_configuration_id'] for j in p['jobs']}) == 1
