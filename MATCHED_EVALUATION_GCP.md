@@ -34,46 +34,50 @@ The bundle is `outputs/journal/matched-encoding-v2`. It includes `campaign.json`
 `plan.json`, `reuse_map.csv`, `remaining_runs.csv`, `reused_records.jsonl`,
 `supplemental_runs.csv`, recovered source CSVs, and `preparation_report.json`.
 
-The exported package contains the exact implementation files and this bundle.
-It is intended for a separate checkout of commit `6e5f7d7`, preserving the
-existing code and result directories on each VM. Preparation does not need to
-be repeated on the VMs, and the historical result directories need not be copied.
+The launcher automatically installs the exact implementation and bundle in a
+separate worktree at commit `6e5f7d7`. Preparation does not need to be repeated
+on the VMs, and the historical result directories need not be copied.
+`src/Matched_Encoding_Evaluation.py` is also published as a source file; its
+command-line entry point delegates to the same frozen runtime.
 
 ## Install the same package on each VM
 
-From the existing repository on each VM, fetch the branch, create a separate
-runtime checkout of the frozen base, and extract the package from the fetched
-GitHub branch:
+From the existing repository on each VM, update the launcher branch:
 
 ```bash
 git fetch origin journal-compact-objectives
-git worktree add --detach ../b2b-matched-v2 6e5f7d7
-git archive origin/journal-compact-objectives \
-  outputs/matched-encoding-v2-gcp.tar.gz | tar -xf - -C ../b2b-matched-v2
-cd ../b2b-matched-v2
-tar -xzf outputs/matched-encoding-v2-gcp.tar.gz
+git switch journal-compact-objectives
+git pull --ff-only origin journal-compact-objectives
 ```
 
-Create this checkout only once per VM. After interruption, return to
-`../b2b-matched-v2` and repeat only the environment setup and that VM's run
-command. The exported computational source differs from the base tree by
-design; its exact hashes are recorded in the bundle and checked by the runner.
-
-Set the paths to the already installed Python environment and experiment
-configuration on that VM. Replace the example paths with their actual paths:
+Stay in this repository when invoking the commands below. The launcher reads
+`journal_gcp.env` here and automatically uses `.venv-ubuntu/bin/python` when it
+exists. For environments in another location, set the corresponding paths:
 
 ```bash
 export JOURNAL_ENV_FILE=/path/to/original-repository/journal_gcp.env
 export JOURNAL_PYTHON=/path/to/original-repository/.venv-ubuntu/bin/python
-export ALLOW_DIRTY=1
+```
+
+Check the plan on every VM:
+
+```bash
 bash scripts/run_matched_encoding_three_vms.sh plan
 ```
 
-`ALLOW_DIRTY=1` permits the exported implementation files over the base commit.
-The runner independently requires the exact frozen hashes of all Python source
-files and the same base Git commit. Modified computational source files are
-rejected even with this flag. Keep this source snapshot unchanged until all
-three shards finish.
+On first use this creates `../b2b-matched-v2`, verifies the package SHA-256,
+extracts all dependencies and reuse records, then verifies the frozen source and
+bundle hashes. It reports 6,102 planned cells, 4,960 reused cells, and 1,142 new
+runs. Subsequent invocations verify and reuse this directory without replacing
+source or results. Set `MATCHED_RUNTIME_DIR` to another absolute directory
+outside the repository if needed. An existing manually installed runtime with
+the same hashes can be reused.
+
+The frozen runtime's computational source differs from its base tree by design.
+The runner permits these exported files and independently requires their exact
+hashes and the same base Git commit. Keep this source snapshot unchanged until
+all three shards finish. No manual extraction or copying of Python files is
+required.
 
 The new runs pin UWrMaxSAT to
 `29c51abeabd43015c75a8e6ee789fdbb9aa2803096d2cac536ec60bd516ab4a7`.
@@ -108,30 +112,31 @@ only that shard's missing jobs. Completed OPTIMAL, UNSAT, and TIMEOUT rows are
 retained; a valid timeout is not retried. If an actual ERROR occurs, inspect its
 log before deliberately retrying with `RETRY_ERRORS=1`.
 
-Output directories are `outputs/journal/matched-encoding-v2/shard-0-of-3`,
+Output directories are under the frozen runtime, by default
+`../b2b-matched-v2/outputs/journal/matched-encoding-v2/shard-0-of-3`,
 `shard-1-of-3`, and `shard-2-of-3`. Each contains the same plan, its own reused
 and executed JSONL records, normalized CSV, environment, status and logs.
+Re-run commands from the original launcher repository after interruption.
 
 ## Validate, return and merge
 
 On each VM, validate its own shard after completion; substitute its index:
 
 ```bash
-"$JOURNAL_PYTHON" src/Validate_Journal_Run.py \
-  --output outputs/journal/matched-encoding-v2/shard-0-of-3 \
-  --allow-incomplete --allow-dirty --allow-environment-drift
+bash scripts/run_matched_encoding_three_vms.sh validate 0
 ```
 
-`--allow-incomplete` permits the other two VMs' cells to be absent. The merger
+The validator permits the other two VMs' cells to be absent. The merger
 still requires every cell assigned to each supplied shard to be present.
 Transfer the three shard directories back to the author machine without
-combining or replacing their JSONL files by hand, then run:
+combining or replacing their JSONL files by hand, then run from the launcher
+repository, substituting the actual paths to the returned directories:
 
 ```bash
 bash scripts/run_matched_encoding_three_vms.sh merge \
-  outputs/journal/matched-encoding-v2/shard-0-of-3 \
-  outputs/journal/matched-encoding-v2/shard-1-of-3 \
-  outputs/journal/matched-encoding-v2/shard-2-of-3
+  /path/to/returned/shard-0-of-3 \
+  /path/to/returned/shard-1-of-3 \
+  /path/to/returned/shard-2-of-3
 bash scripts/run_matched_encoding_three_vms.sh analyze
 ```
 
