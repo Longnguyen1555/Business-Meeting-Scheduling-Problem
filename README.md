@@ -1,7 +1,9 @@
 # B2B SAT/MaxSAT journal objective framework
 
-For the current **1,638-run All-126 first repetition**, see
-[the T1–T3 run instructions](#first-all-126-journal-campaign-t1t3).
+For the current **three-VM completion campaign (1,142 new runs)**, see
+[the matched-evaluation GCP instructions](MATCHED_EVALUATION_GCP.md).
+The earlier **1,638-run All-126 first-repetition** instructions remain at
+[T1–T3](#first-all-126-journal-campaign-t1t3).
 
 This repository implements the conference formulation and the journal
 objective extension of the Business-to-Business Meeting Scheduling Problem.
