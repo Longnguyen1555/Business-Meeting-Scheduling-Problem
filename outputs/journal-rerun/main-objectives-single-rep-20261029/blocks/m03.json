@@ -1,0 +1,19 @@
+{
+  "description": "Primary 2-model x 3-objective journal comparison. All three objectives use their native feasible set without participant idle caps.",
+  "blocks": [
+    {
+      "id": "primary_two_models_three_objectives",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "id": "published_2022_ir",
+          "executor": "org_ir",
+          "objective_mode": "ir"
+        }
+      ]
+    }
+  ]
+}
