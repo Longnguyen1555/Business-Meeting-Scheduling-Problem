@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Bootstrap the frozen campaign, then run one worker on each identical GCP VM.
 set -Eeuo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
@@ -13,17 +14,16 @@ if [[ -f "$env_file" ]]; then
   source "$env_file"
   set +a
 fi
+# Exported files differ from the base tree; exact source hashes are still required.
 export ALLOW_DIRTY=${dirty_override:-1}
 if [[ -n "$retry_override" ]]; then export RETRY_ERRORS=$retry_override; fi
 
+# Resolve the original checkout's environment before entering the frozen runtime.
 if [[ -z "${JOURNAL_PYTHON:-}" ]]; then
-  venv_dir=${JOURNAL_VENV:-.venv}
-  [[ "$venv_dir" = /* ]] || venv_dir="$PROJECT_DIR/$venv_dir"
-  if [[ -x "$venv_dir/bin/python" ]]; then export JOURNAL_PYTHON="$venv_dir/bin/python"; fi
+  venv_dir=${JOURNAL_VENV:-$PROJECT_DIR/.venv-ubuntu}
+  if [[ "$venv_dir" != /* ]]; then venv_dir=$PROJECT_DIR/$venv_dir; fi
+  if [[ -x "$venv_dir/bin/python" ]]; then export JOURNAL_PYTHON=$venv_dir/bin/python; fi
 fi
-if [[ -z "${JOURNAL_PYTHON:-}" || ! -x "$JOURNAL_PYTHON" ]]; then
-  echo "ERROR: set JOURNAL_PYTHON to the repo Python executable (for example .venv/bin/python)" >&2
-  exit 2
-fi
+# The configuration has already been sourced and exported above.
 export JOURNAL_ENV_FILE=/dev/null
-exec "$JOURNAL_PYTHON" -B "$PROJECT_DIR/src/Bootstrap_Matched_Evaluation_v2.py" "${@:-plan}"
+exec python3 -B "$PROJECT_DIR/src/Bootstrap_Matched_Evaluation.py" "${@:-plan}"
