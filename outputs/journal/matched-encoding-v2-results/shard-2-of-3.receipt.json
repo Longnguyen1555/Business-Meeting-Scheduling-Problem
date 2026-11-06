@@ -1,0 +1,26 @@
+{
+  "archive": "shard-2-of-3.tar.gz",
+  "archive_sha256": "113f2cc1bdc3fbb71d51fdcf66cbd70c2cefdb8e63cc7318d90aa11560f23ae9",
+  "archive_bytes": 5250031,
+  "file_count": 386,
+  "all_file_hashes_verified": true,
+  "source_vm": {
+    "project": "protean-tome-508911-n5",
+    "zone": "us-central1-a",
+    "instance": "instance-20261011-141717"
+  },
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "shard_index": 2,
+  "expected_cells": 2025,
+  "observed_cells": 2025,
+  "raw_attempts": 2025,
+  "missing_cells": 0,
+  "nonterminal_cells": 0,
+  "outcomes": {
+    "OPTIMAL": 1683,
+    "UNSAT": 225,
+    "TIMEOUT": 117
+  },
+  "coverage_complete": true,
+  "validation_scope": "archive integrity, record coverage and statuses; independent schedule and objective validation remains pending"
+}
