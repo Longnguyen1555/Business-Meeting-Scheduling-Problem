@@ -120,6 +120,46 @@ Re-run commands from the original launcher repository after interruption.
 
 ## Validate, return and merge
 
+The frozen worktree uses a detached base commit. Publish results from the
+original launcher repository on `journal-compact-objectives`.
+
+After the VM's worker has finished, update the original repository and export
+its shard. The example is for VM 1; use `1` on VM 2 and `2` on VM 3:
+
+```bash
+git pull --ff-only origin journal-compact-objectives
+bash scripts/run_matched_encoding_three_vms.sh export 0
+git add -- outputs/journal/matched-encoding-v2-results/shard-0-of-3.tar.gz
+git commit -m "Add matched evaluation results for shard 0"
+git pull --rebase origin journal-compact-objectives
+git push origin HEAD:journal-compact-objectives
+```
+
+Export reads the existing runtime directly without bootstrapping, restoring
+files, applying a solver pin, or invoking a solver. It copies every shard file
+including JSONL, CSV, environment, reports and ignored `.log` files into the
+archive, excluding only the worker lock. Source files remain in place. SHA-256
+hashes for every file and record coverage are included in `export_manifest.json`.
+Independent schedule and objective validation still follows after transfer.
+Export refuses an active worker, missing or nonterminal cells, and replacement
+of a differing archive. A repeated export of identical files is accepted.
+
+If the runtime directory is custom, use
+`export 0 --source /actual/path/to/shard-0-of-3`. To preserve partial or ERROR
+results for diagnosis, add `--allow-incomplete`; the manifest records that the
+shard is incomplete. A later changed snapshot needs a new `--archive PATH`.
+
+After all three VM commits have been pushed, pull them on the author machine
+and extract the archives into an empty results directory, for example:
+
+```bash
+mkdir -p outputs/journal/matched-encoding-v2-returned
+for index in 0 1 2; do
+  tar -xzf "outputs/journal/matched-encoding-v2-results/shard-$index-of-3.tar.gz" \
+    -C outputs/journal/matched-encoding-v2-returned
+done
+```
+
 On each VM, validate its own shard after completion; substitute its index:
 
 ```bash

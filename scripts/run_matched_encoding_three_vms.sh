@@ -5,6 +5,12 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_DIR"
 
+# Export existing results directly; never bootstrap or repair a completed runtime.
+if [[ "${1:-}" == export ]]; then
+  shift
+  exec python3 -B "$PROJECT_DIR/src/Export_Matched_Results.py" "$@"
+fi
+
 dirty_override=${ALLOW_DIRTY-}
 retry_override=${RETRY_ERRORS-}
 env_file=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
