@@ -141,6 +141,28 @@ The active worker sessions are `matched-split-0`, `matched-split-3` and
 frozen worktree. Continue these workers with the recorded `--shard-count 9`
 and index. Starting the old original shard 0 would duplicate work.
 
+Part 3 moved to the VM running part 0 on 9 November, at the author's request.
+Parts 0 and 3 now run concurrently, each with one thread, on
+`instance-20261104-105839` in project `project-e19a1072-60cf-47ea-a1e`.
+The part 3 session is `matched-split-3`, owned by `duc933827`. Its output path
+is `/home/duc933827/b2b-matched-v2/outputs/journal/matched-encoding-v2-migrated/shard-3-of-9`.
+Its 672 completed records and the previous execution environment were copied
+unchanged. Three pending cells resume on the new VM. The interrupted active
+cell has no terminal record and restarts within those three cells.
+
+The old part 3 worker and finalizer on `instance-20261031-120104` were stopped.
+The original data remain there; a verified stopped snapshot is also stored at
+`outputs/journal/matched-encoding-v2-results/shard-3-of-9.stopped-672.tar.gz`.
+The exact original solver binary was transferred with SHA-256
+`f9c0f7fac1890b83dde1dac28c8bb0cd7db8f2018df9bf675f5ef5fff03b0b92`.
+Its private runtime copy is outside `src`; the computational source and plan
+hash were verified before resuming. The corresponding copied campaign
+configuration is in `matched-encoding-v2-migrated/campaign.json`.
+The resumed environment records the VM transition. Original logs are retained
+under `provenance/pre-migration-logs`; the new worker writes
+`worker.after-migration.log`. Migration evidence is in
+`outputs/journal/matched-encoding-v2-results/part-3-migration.receipt.json`.
+
 The sessions `matched-export-0`, `matched-export-3` and `matched-export-6`
 wait for the corresponding worker PID to exit. They verify complete terminal
 coverage, preserve the campaign configuration matching the worker's recorded
@@ -148,13 +170,15 @@ SHA-256, and export `shard-INDEX-of-9.tar.gz` into the original repository's
 `outputs/journal/matched-encoding-v2-results`. They stop on ERROR, interruption,
 missing cells or changed configuration. They do not retry timeouts, run solvers,
 or commit files. Archive transfer and publication are separate steps.
+`matched-export-3` now runs beside the migrated part 3 worker on
+`instance-20261104-105839` and exports from its new output path.
 
 For a manual export after a worker finishes, use the updated launcher in the
 original repository, substituting the actual source path:
 
 ```bash
 bash scripts/run_matched_encoding_three_vms.sh export 3 --shard-count 9 \
-  --source /home/longkevin05062006/b2b-matched-v2/outputs/journal/matched-encoding-v2-split/shard-3-of-9
+  --source /home/duc933827/b2b-matched-v2/outputs/journal/matched-encoding-v2-migrated/shard-3-of-9
 ```
 
 Completed derived partitions also need `environment.json` and a normalized CSV.

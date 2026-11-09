@@ -1,0 +1,45 @@
+{
+  "migrated_utc": "2026-11-09T14:41:10.659489+00:00",
+  "shard_index": 3,
+  "shard_count": 9,
+  "source_vm": {
+    "project": "project-4301720b-91e0-476d-bfe",
+    "zone": "us-central1-a",
+    "instance": "instance-20261031-120104"
+  },
+  "destination_vm": {
+    "project": "project-e19a1072-60cf-47ea-a1e",
+    "zone": "us-central1-a",
+    "instance": "instance-20261104-105839"
+  },
+  "source_archive": "shard-3-of-9.stopped-672.tar.gz",
+  "source_archive_sha256": "0f278218171b683ebaf4c88534ed2828da7271f31cab4aaec8940aec81467854",
+  "source_archive_bytes": 1691812,
+  "source_file_count": 133,
+  "source_raw_records_sha256": "8be792a8c501fe78c9680f47e343a5378075b4deea5e396eee9bcdf775d8c336",
+  "source_cells_preserved": 672,
+  "expected_cells": 675,
+  "pending_cells_at_move": 3,
+  "outcomes_before_move": {
+    "OPTIMAL": 505,
+    "UNSAT": 108,
+    "TIMEOUT": 59
+  },
+  "is_final_shard_result": false,
+  "source_worker_stopped": true,
+  "source_finalizer_stopped": true,
+  "original_source_files_retained": true,
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "frozen_source_hashes_verified": true,
+  "source_archive_file_hashes_verified": true,
+  "solver_binary_sha256_preserved": "f9c0f7fac1890b83dde1dac28c8bb0cd7db8f2018df9bf675f5ef5fff03b0b92",
+  "config_sha256_preserved": "a89bd373981d244bf6b36081b5f9503992e82e58622d13a2ace3bdf58846c618",
+  "destination_output": "/home/duc933827/b2b-matched-v2/outputs/journal/matched-encoding-v2-migrated/shard-3-of-9",
+  "worker_session": "matched-split-3",
+  "worker_pid_at_resume": 357365,
+  "finalizer_session": "matched-export-3",
+  "runs_concurrently_with_part": 0,
+  "threads_per_worker": 1,
+  "active_cell_before_migration": "tic-13crafc.prec40 / compact_base_ir_im_is / repetition 3",
+  "interrupted_cell_policy": "The interrupted cell has no terminal record and is restarted among the three pending cells. Completed records and runtimes remain unchanged."
+}
