@@ -1,0 +1,26 @@
+{
+  "archive": "shard-1-of-3.tar.gz",
+  "archive_sha256": "72a4cab00032fb9f651b57844ddf6ab58bb79d00299dd54f08693acbb1424d39",
+  "archive_bytes": 5141761,
+  "file_count": 384,
+  "all_file_hashes_verified": true,
+  "source_vm": {
+    "project": "project-4301720b-91e0-476d-bfe",
+    "zone": "us-central1-a",
+    "instance": "instance-20261031-120104"
+  },
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "shard_index": 1,
+  "expected_cells": 2025,
+  "observed_cells": 2025,
+  "raw_attempts": 2025,
+  "missing_cells": 0,
+  "nonterminal_cells": 0,
+  "outcomes": {
+    "OPTIMAL": 1427,
+    "UNSAT": 414,
+    "TIMEOUT": 184
+  },
+  "coverage_complete": true,
+  "validation_scope": "archive integrity, record coverage and statuses; independent schedule and objective validation remains pending"
+}
