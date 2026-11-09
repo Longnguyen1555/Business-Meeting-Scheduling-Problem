@@ -1,0 +1,22 @@
+{
+  "verified_utc": "2026-11-09T14:51:09.892519+00:00",
+  "archive": "b2b-runtime-and-results-20261109.tar.gz",
+  "archive_sha256": "c01fa63b0cbad8fdeca5f015d598363ce784cc0446b6555bc1af7ad1833fd508",
+  "archive_bytes": 62152127,
+  "file_count": 5697,
+  "source_bytes": 537804051,
+  "every_archived_file_sha256_verified": true,
+  "source_project": "project-4301720b-91e0-476d-bfe",
+  "source_instance": "instance-20261031-120104",
+  "zone": "us-central1-a",
+  "runtime_base_commit": "6e5f7d7c5c9f1e3696c74a6d2c86126e4113ce42",
+  "contains": [
+    "full B2B runtime worktree except Git worktree pointer and Python caches",
+    "original completed shard 1",
+    "completed partitions 1,4,7",
+    "stopped partition 3 with 672 completed cells",
+    "configuration, raw JSONL, normalized CSV, logs and source files",
+    "result export archives present in the main repository"
+  ],
+  "cleanup_allowed_only_after_remote_sources_rechecked": true
+}
