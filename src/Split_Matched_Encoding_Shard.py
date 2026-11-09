@@ -7,7 +7,9 @@ solver is started by this command.
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
+from contextlib import ExitStack
+import csv
+import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -68,7 +70,7 @@ def assignments(plan: dict[str, Any], shard_count: int) -> dict[str, int]:
     return {str(job["run_key"]): content_shards[str(job["instance_content_id"])] for job in plan["jobs"]}
 
 
-def copy_log(source: Path, destination: Path, row: dict[str, Any], key: str) -> None:
+def copy_log(source: Path, destination: Path, row: dict[str, Any], key: str, parent_index: int) -> None:
     original = str(row.get("campaign_log", ""))
     if not original:
         return
@@ -81,7 +83,7 @@ def copy_log(source: Path, destination: Path, row: dict[str, Any], key: str) -> 
     if not candidates:
         return
     selected = candidates[0]
-    target = destination / "logs" / "reused" / "parent-shard-0" / relative.name
+    target = destination / "logs" / "reused" / f"parent-shard-{parent_index}" / relative.name
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         shutil.copy2(selected, target)
@@ -97,16 +99,38 @@ def split_shard(
     new_count: int = 9,
     new_indices: tuple[int, ...] = (0, 3, 6),
 ) -> dict[str, Any]:
+    # The active worker holds this lock. Reading an interrupted source must not
+    # race a running worker, and the split command never creates a source lock.
+    with ExitStack() as stack:
+        lock_path = source / ".worker.lock"
+        if lock_path.exists():
+            lock = stack.enter_context(lock_path.open("rb"))
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ValueError("source worker is still active") from error
+        return _split_shard(source, output, parent_index=parent_index,
+                            parent_count=parent_count, new_count=new_count,
+                            new_indices=new_indices)
+
+
+def _split_shard(source: Path, output: Path, *, parent_index: int,
+                 parent_count: int, new_count: int,
+                 new_indices: tuple[int, ...]) -> dict[str, Any]:
     source = source.resolve()
     output = output.resolve()
     if parent_count <= 0 or new_count <= 0:
         raise ValueError("shard counts must be positive")
+    if not 0 <= parent_index < parent_count or new_count % parent_count:
+        raise ValueError("new shard count must be a multiple of the valid parent shard count")
     if not new_indices or any(index < 0 or index >= new_count for index in new_indices):
         raise ValueError("new shard indices are outside the requested shard count")
     if len(set(new_indices)) != len(new_indices):
         raise ValueError("new shard indices must be distinct")
     if any(index % parent_count != parent_index for index in new_indices):
         raise ValueError("new shard indices do not refine the parent shard")
+    if set(new_indices) != set(range(parent_index, new_count, parent_count)):
+        raise ValueError("new shard indices must cover the entire parent shard")
     if source == output or source in output.parents:
         raise ValueError("split output must be outside the source shard")
     for name in ("plan.json", "raw/results.jsonl"):
@@ -131,7 +155,21 @@ def split_shard(
     if nonterminal:
         raise ValueError(f"source contains {len(nonterminal)} nonterminal records; finish or diagnose them first")
     selected = {index: {key for key, shard in target_assignments.items() if shard == index} for index in new_indices}
+    if set().union(*selected.values()) != expected_parent:
+        raise ValueError("refinement does not cover the parent jobs exactly")
     source_sha = sha256(source / "raw" / "results.jsonl")
+    parent_environment = read_json(source / "environment.json") if (source / "environment.json").exists() else None
+    if parent_environment and (
+            parent_environment.get("execution_shard_count") != parent_count
+            or parent_environment.get("execution_shard_indices") != [parent_index]
+            or parent_environment.get("plan_sha256") != plan["plan_sha256"]):
+        raise ValueError("source environment does not identify the parent shard and plan")
+    # Check every destination before creating any, so a collision cannot leave
+    # half a partition on disk.
+    for index in new_indices:
+        destination = output / f"shard-{index}-of-{new_count}"
+        if destination.exists() and any(destination.iterdir()):
+            raise ValueError(f"refusing to overwrite nonempty split shard: {destination}")
     reports = []
     for index in new_indices:
         destination = output / f"shard-{index}-of-{new_count}"
@@ -154,7 +192,8 @@ def split_shard(
             row["split_parent_execution_shard_count"] = parent_count
             row["split_parent_execution_shard_index"] = parent_index
             row["split_parent_results_sha256"] = source_sha
-            copy_log(source, destination, row, key)
+            row["split_parent_record_sha256"] = hashlib.sha256(canonical(record).encode()).hexdigest()
+            copy_log(source, destination, row, key, parent_index)
             target_records.append(copied)
         target_records.sort(key=lambda record: (str(record["run_key"]), int(record["attempt"])))
         raw_path = destination / "raw" / "results.jsonl"
@@ -163,6 +202,29 @@ def split_shard(
             for record in target_records:
                 stream.write(canonical(record) + "\n")
         target_jobs = {key for key, shard in target_assignments.items() if shard == index}
+        target_latest = {record["run_key"]: record["row"] for record in target_records}
+        normalized = destination / "normalized" / "detailed.csv"
+        normalized.parent.mkdir(parents=True, exist_ok=True)
+        with normalized.open("w", newline="", encoding="utf-8") as stream:
+            if target_latest:
+                writer = csv.DictWriter(stream, fieldnames=sorted({field for row in target_latest.values() for field in row}))
+                writer.writeheader()
+                writer.writerows(target_latest.values())
+        if parent_environment:
+            write_json(destination / "provenance" / "parent_environment.json", parent_environment)
+            # An entirely copied partition has no new execution environment.
+            # Keep the original provenance and mark only its changed partition.
+            if target_jobs == set(target_latest):
+                environment = dict(parent_environment)
+                environment.update(execution_shard_count=new_count,
+                                   execution_shard_indices=[index],
+                                   execution_shard_policy=POLICY,
+                                   partitioned_from={"source": str(source),
+                                                     "execution_shard_count": parent_count,
+                                                     "execution_shard_index": parent_index,
+                                                     "results_sha256": source_sha,
+                                                     "environment_sha256": sha256(source / "environment.json")})
+                write_json(destination / "environment.json", environment)
         reports.append({
             "shard_index": index,
             "expected_jobs": len(target_jobs),

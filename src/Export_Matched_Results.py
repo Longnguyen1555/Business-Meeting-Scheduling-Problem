@@ -33,20 +33,20 @@ def file_hash(path: Path) -> str:
     return digest.hexdigest()
 
 
-def result_inventory(source: Path, index: int, allow_incomplete: bool) -> dict:
+def result_inventory(source: Path, index: int, allow_incomplete: bool, shard_count: int = 3) -> dict:
     required = ("plan.json", "environment.json", "raw/results.jsonl", "normalized/detailed.csv")
     for name in required:
         if not (source / name).is_file():
             raise ValueError(f"missing result file: {source / name}")
     plan = json.loads((source / "plan.json").read_text())
     environment = json.loads((source / "environment.json").read_text())
-    if (environment.get("execution_shard_count") != 3
+    if (environment.get("execution_shard_count") != shard_count
             or environment.get("execution_shard_indices") != [index]):
-        raise ValueError(f"environment does not identify shard {index} of 3")
+        raise ValueError(f"environment does not identify shard {index} of {shard_count}")
     if environment.get("plan_sha256") != plan.get("plan_sha256"):
         raise ValueError("environment and plan SHA-256 differ")
     contents = sorted({str(job["instance_content_id"]) for job in plan["jobs"]})
-    assigned = {content for rank, content in enumerate(contents) if rank % 3 == index}
+    assigned = {content for rank, content in enumerate(contents) if rank % shard_count == index}
     expected = {job["run_key"] for job in plan["jobs"] if job["instance_content_id"] in assigned}
     latest = {}
     raw_count = 0
@@ -75,7 +75,7 @@ def result_inventory(source: Path, index: int, allow_incomplete: bool) -> dict:
     if (missing or nonterminal) and not allow_incomplete:
         raise ValueError(f"shard has {missing} missing and {nonterminal} nonterminal cells; "
                          "use --allow-incomplete to archive diagnostics without treating it as complete")
-    return {"plan_sha256": plan["plan_sha256"], "shard_index": index,
+    return {"plan_sha256": plan["plan_sha256"], "shard_index": index, "shard_count": shard_count,
             "expected_cells": len(expected), "observed_cells": len(latest),
             "raw_attempts": raw_count, "missing_cells": missing,
             "nonterminal_cells": nonterminal, "outcomes": dict(sorted(outcomes.items())),
@@ -120,7 +120,9 @@ def verify_archive(archive: Path, prefix: str, files: dict) -> dict:
     return manifest
 
 
-def export_shard(source: Path, archive: Path, index: int, *, allow_incomplete=False) -> dict:
+def export_shard(source: Path, archive: Path, index: int, *, allow_incomplete=False, shard_count=3) -> dict:
+    if shard_count <= 0 or not 0 <= index < shard_count:
+        raise ValueError("shard index must be within a positive shard count")
     source, archive = source.resolve(), archive.resolve()
     if not source.is_dir():
         raise ValueError(f"result shard does not exist: {source}; use --source for a custom location")
@@ -136,9 +138,9 @@ def export_shard(source: Path, archive: Path, index: int, *, allow_incomplete=Fa
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise ValueError("shard worker is still active; wait for it to finish before export") from error
-        inventory = result_inventory(source, index, allow_incomplete)
+        inventory = result_inventory(source, index, allow_incomplete, shard_count)
         files = source_files(source)
-        prefix = f"shard-{index}-of-3"
+        prefix = f"shard-{index}-of-{shard_count}"
         if archive.exists():
             verify_archive(archive, prefix, files)
         else:
@@ -173,16 +175,19 @@ def export_shard(source: Path, archive: Path, index: int, *, allow_incomplete=Fa
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("index", type=int, choices=(0, 1, 2))
+    parser.add_argument("index", type=int)
+    parser.add_argument("--shard-count", type=int, default=3, help="execution partition count (use 9 after refinement)")
     parser.add_argument("--source", type=Path, help="existing shard directory, if outside the default runtime")
     parser.add_argument("--archive", type=Path, help="new archive path; existing differing archives are never replaced")
     parser.add_argument("--allow-incomplete", action="store_true", help="export missing/error cells for diagnosis")
     args = parser.parse_args(argv)
+    if args.shard_count <= 0 or not 0 <= args.index < args.shard_count:
+        parser.error("index must satisfy 0 <= index < positive --shard-count")
     runtime = Path(os.environ.get("MATCHED_RUNTIME_DIR", str(PROJECT_ROOT.parent / "b2b-matched-v2"))).expanduser()
     bundle = Path(os.environ.get("MATCHED_OUTPUT", str(runtime / BUNDLE))).expanduser()
-    source = args.source or bundle / f"shard-{args.index}-of-3"
-    archive = args.archive or PROJECT_ROOT / RESULTS / f"shard-{args.index}-of-3.tar.gz"
-    report = export_shard(source, archive, args.index, allow_incomplete=args.allow_incomplete)
+    source = args.source or bundle / f"shard-{args.index}-of-{args.shard_count}"
+    archive = args.archive or PROJECT_ROOT / RESULTS / f"shard-{args.index}-of-{args.shard_count}.tar.gz"
+    report = export_shard(source, archive, args.index, allow_incomplete=args.allow_incomplete, shard_count=args.shard_count)
     print(json.dumps(report, indent=2, sort_keys=True))
     try:
         relative = archive.resolve().relative_to(PROJECT_ROOT).as_posix()

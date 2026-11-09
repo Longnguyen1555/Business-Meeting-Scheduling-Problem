@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import fcntl
 from pathlib import Path
 import sys
 import tempfile
@@ -35,6 +36,9 @@ class SplitMatchedEncodingShardTests(unittest.TestCase):
         (self.source / "raw/results.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
         (self.source / "logs").mkdir()
         (self.source / "logs/a.log").write_text("log")
+        (self.source / "environment.json").write_text(json.dumps({
+            "plan_sha256": "plan", "execution_shard_count": 3,
+            "execution_shard_indices": [0], "hostname": "original-vm"}))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -48,10 +52,46 @@ class SplitMatchedEncodingShardTests(unittest.TestCase):
             path = Path(item["path"])
             rows = [json.loads(line) for line in (path / "raw/results.jsonl").read_text().splitlines()]
             self.assertEqual(len(rows), 2)
+            environment = json.loads((path / "environment.json").read_text())
+            self.assertEqual(environment["execution_shard_count"], 9)
+            self.assertEqual(environment["execution_shard_indices"], [item["shard_index"]])
+            self.assertEqual(environment["hostname"], "original-vm")
+            self.assertTrue((path / "provenance/parent_environment.json").is_file())
+            self.assertTrue((path / "normalized/detailed.csv").is_file())
             for record in rows:
                 self.assertEqual(record["row"]["execution_shard_count"], 9)
                 self.assertEqual(record["row"]["execution_shard_index"], item["shard_index"])
                 self.assertTrue((path / record["row"]["campaign_log"]).is_file())
+                self.assertEqual(len(record["row"]["split_parent_record_sha256"]), 64)
+
+    def test_partial_partition_gets_csv_and_parent_provenance_without_invented_environment(self):
+        records = (self.source / "raw/results.jsonl").read_text().splitlines()
+        (self.source / "raw/results.jsonl").write_text("\n".join(records[:-1]) + "\n")
+        report = split_shard(self.source, self.root / "split")
+        self.assertEqual(report["source_pending_count"], 1)
+        path = self.root / "split/shard-6-of-9"
+        self.assertFalse((path / "environment.json").exists())
+        self.assertTrue((path / "normalized/detailed.csv").exists())
+        self.assertTrue((path / "provenance/parent_environment.json").exists())
+
+    def test_active_worker_and_incomplete_refinement_are_rejected(self):
+        with (self.source / ".worker.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(ValueError, "worker is still active"):
+                split_shard(self.source, self.root / "split")
+        for kwargs in ({"new_indices": (0, 3)}, {"new_count": 8, "new_indices": (0, 3, 6)}):
+            with self.assertRaises(ValueError):
+                split_shard(self.source, self.root / "split", **kwargs)
+        self.assertFalse((self.root / "split").exists())
+
+    def test_destination_collision_does_not_create_partial_partition(self):
+        collision = self.root / "split/shard-6-of-9"
+        collision.mkdir(parents=True)
+        (collision / "keep").write_text("existing")
+        with self.assertRaisesRegex(ValueError, "nonempty"):
+            split_shard(self.source, self.root / "split")
+        self.assertFalse((self.root / "split/shard-0-of-9").exists())
+        self.assertEqual((collision / "keep").read_text(), "existing")
 
     def test_nonterminal_source_is_rejected(self):
         records = [json.loads(line) for line in (self.source / "raw/results.jsonl").read_text().splitlines()]

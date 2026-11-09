@@ -120,6 +120,63 @@ Re-run commands from the original launcher repository after interruption.
 
 ## Validate, return and merge
 
+### Completion after splitting shard 0
+
+Shard 0 was safely interrupted with 1,953 terminal records and 99 remaining
+cells. Its stopped source is retained in
+`outputs/journal/matched-encoding-v2-results/shard-0-of-3.stopped-1953.tar.gz`.
+The plan hash and its 6,102 target cells are unchanged. Partition metadata is
+refined from three shards to nine, preserving the original execution records
+and source hashes in the derived copies.
+
+| Original shard | New indices | Execution |
+|---|---|---|
+| 0 | 0, 3, 6 | Remaining cells run on three VMs |
+| 1 | 1, 4, 7 | Completed records copied without solving |
+| 2 | 2, 5, 8 | Completed records copied without solving |
+
+The active worker sessions are `matched-split-0`, `matched-split-3` and
+`matched-split-6`. Each writes to
+`outputs/journal/matched-encoding-v2-split/shard-INDEX-of-9` inside its VM's
+frozen worktree. Continue these workers with the recorded `--shard-count 9`
+and index. Starting the old original shard 0 would duplicate work.
+
+The sessions `matched-export-0`, `matched-export-3` and `matched-export-6`
+wait for the corresponding worker PID to exit. They verify complete terminal
+coverage, preserve the campaign configuration matching the worker's recorded
+SHA-256, and export `shard-INDEX-of-9.tar.gz` into the original repository's
+`outputs/journal/matched-encoding-v2-results`. They stop on ERROR, interruption,
+missing cells or changed configuration. They do not retry timeouts, run solvers,
+or commit files. Archive transfer and publication are separate steps.
+
+For a manual export after a worker finishes, use the updated launcher in the
+original repository, substituting the actual source path:
+
+```bash
+bash scripts/run_matched_encoding_three_vms.sh export 3 --shard-count 9 \
+  --source /home/longkevin05062006/b2b-matched-v2/outputs/journal/matched-encoding-v2-split/shard-3-of-9
+```
+
+Completed derived partitions also need `environment.json` and a normalized CSV.
+The updated split helper creates these from the parent environment for entirely
+copied partitions, preserving the parent environment under `provenance/`.
+Partial partitions receive a new execution environment when their worker starts.
+Each merge input includes the verified executed configuration at
+`provenance/campaign.json`. A configuration hash difference is accepted only
+under the common-GCP policy when these hash-verified files differ solely in
+`uwrmaxsat_sha256`. Other configuration differences still prevent merging.
+
+The author machine has prepared partitions 1, 4, 7 from the shard 1 archive and
+2, 5, 8 from the shard 2 archive. Their independently validated source schedules
+and the stopped parent snapshot are recorded in
+`outputs/journal/matched-encoding-v2-returns/preparation_audit.json`.
+Merge all nine partitions only after 0, 3 and 6 finish; the three-input launcher
+shortcut is for the original partition layout. Use the author's updated
+`src/Merge_Journal_Shards.py` with nine `--input` arguments and
+`--allow-dirty --allow-mixed-environments` for the refined layout.
+
+### Publishing an original three-way shard
+
 The frozen worktree uses a detached base commit. Publish results from the
 original launcher repository on `journal-compact-objectives`.
 

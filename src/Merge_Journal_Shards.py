@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -72,6 +73,34 @@ def _compatible_environment_errors(
         for field in exact_fields
         if candidate.get(field) != reference.get(field)
     ]
+
+
+def _verified_config_without_solver_pin(path: Path, environment: dict[str, Any]) -> dict[str, Any]:
+    """Read the actual configuration bound to this environment's content hash."""
+    config_path = path / "provenance" / "campaign.json"
+    if not config_path.is_file():
+        raise ValueError(f"config SHA-256 differs; missing configuration evidence: {config_path}")
+    raw = config_path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != environment.get("config_sha256"):
+        raise ValueError(f"configuration evidence does not match recorded SHA-256: {config_path}")
+    config = json.loads(raw)
+    if config.get("uwrmaxsat_sha256") != environment.get("uwrmaxsat_sha256"):
+        raise ValueError(f"configuration solver pin differs from its environment: {config_path}")
+    return {key: value for key, value in config.items() if key != "uwrmaxsat_sha256"}
+
+
+def _solver_pin_only_config_difference(
+    reference_path: Path, reference: dict[str, Any],
+    candidate_path: Path, candidate: dict[str, Any],
+    *, plan: dict[str, Any], allow_mixed_environments: bool,
+) -> bool:
+    # Local binary pins were expressly allowed for this common-GCP campaign.
+    # Other configuration differences still require exact agreement.
+    if not allow_mixed_environments or plan.get("reuse_policy") != "validated_common_gcp":
+        return False
+    first = _verified_config_without_solver_pin(reference_path, reference)
+    second = _verified_config_without_solver_pin(candidate_path, candidate)
+    return canonical_json(first) == canonical_json(second)
 
 
 def merge_shards(
@@ -149,6 +178,10 @@ def merge_shards(
             for field in mismatches
             if field not in MIXABLE_ENVIRONMENT_FIELDS
         ]
+        if "config_sha256" in nonmixable and _solver_pin_only_config_difference(
+                resolved_inputs[0], reference_environment, path, environment,
+                plan=reference_plan, allow_mixed_environments=allow_mixed_environments):
+            nonmixable.remove("config_sha256")
         if nonmixable or (mismatches and not allow_mixed_environments):
             raise ValueError(
                 f"shard {position} has incompatible environment fields: "
@@ -274,6 +307,9 @@ def merge_shards(
     environment_dir = output / "environments"
     for position, environment in enumerate(environments, start=1):
         _write_json(environment_dir / f"source-{position:02d}.json", environment)
+        provenance = resolved_inputs[position - 1] / "provenance"
+        if provenance.is_dir():
+            shutil.copytree(provenance, output / "provenance" / f"source-{position:02d}")
 
     run_order = {
         job["run_key"]: int(job["run_order"])

@@ -1,0 +1,58 @@
+{
+  "checked_utc": "2026-11-09T10:39:15.990804+00:00",
+  "production_campaign_complete": false,
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "target_cells": 6102,
+  "stopped_parent_snapshot": {
+    "archive": "shard-0-of-3.stopped-1953.tar.gz",
+    "sha256": "e62bf5459885f02bbd51280ddb4758dfd83acc9e42616cf876fc08ccd023aafd",
+    "cells": 1953,
+    "source_pending_cells_at_split": 99,
+    "is_final_shard_result": false
+  },
+  "source_archives_verified": 3,
+  "source_cells_validated": 6003,
+  "optimal_schedules_independently_validated": 4501,
+  "benchmark_contents_sha256_checked": 189,
+  "completed_partitions_ready": [
+    1,
+    2,
+    4,
+    5,
+    7,
+    8
+  ],
+  "config_provenance_archive": {
+    "archive": "split-config-provenance.tar.gz",
+    "sha256": "04a22ced08fd55e8a13d73c378cb2266ecef6442f98d21388b8d329ed0e760ef",
+    "bytes": 768644
+  },
+  "config_comparison": "SHA-256-bound source configurations differ only in uwrmaxsat_sha256",
+  "live_workers_last_checked": [
+    {
+      "index": 0,
+      "observed_cells": 694,
+      "expected_cells": 702,
+      "remaining_cells": 8
+    },
+    {
+      "index": 3,
+      "observed_cells": 661,
+      "expected_cells": 675,
+      "remaining_cells": 14
+    },
+    {
+      "index": 6,
+      "observed_cells": 658,
+      "expected_cells": 675,
+      "remaining_cells": 17
+    }
+  ],
+  "automatic_export_sessions": [
+    "matched-export-0",
+    "matched-export-3",
+    "matched-export-6"
+  ],
+  "manuscript_results_updated": false,
+  "scope": "Completed source archive validation and merge preparation; live worker progress remains provisional."
+}

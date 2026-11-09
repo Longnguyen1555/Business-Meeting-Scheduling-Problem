@@ -99,6 +99,22 @@ class MatchedResultExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unassigned run keys"):
             export_shard(self.source, self.archive, 0)
 
+    def test_nine_way_partition_exports_only_its_own_cells(self):
+        environment = json.loads((self.source / "environment.json").read_text())
+        environment.update(execution_shard_count=9, execution_shard_indices=[3])
+        (self.source / "environment.json").write_text(json.dumps(environment))
+        self.write_records([self.record("run-3", "OPTIMAL")])
+        (self.source / "normalized/detailed.csv").write_text("run_key,status\nrun-3,OPTIMAL\n")
+        report = export_shard(self.source, self.archive, 3, shard_count=9)
+        self.assertEqual(report["expected_cells"], 1)
+        self.assertEqual(report["shard_count"], 9)
+        with tarfile.open(self.archive) as stream:
+            self.assertIn("shard-3-of-9/export_manifest.json", stream.getnames())
+            self.assertTrue(all(name.startswith("shard-3-of-9/") for name in stream.getnames()))
+        for index, count in ((-1, 9), (9, 9), (0, 0)):
+            with self.assertRaisesRegex(ValueError, "positive shard count"):
+                export_shard(self.source, self.archive, index, shard_count=count)
+
     def test_retried_error_and_terminal_result_preserve_every_attempt(self):
         self.write_records([self.record("run-0", "ERROR"), self.record("run-0", "OPTIMAL", 2),
                             self.record("run-3", "UNSAT")])
