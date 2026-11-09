@@ -1,0 +1,31 @@
+{
+  "deleted_utc": "2026-11-09T15:27:03.118460+00:00",
+  "source_project": "project-4301720b-91e0-476d-bfe",
+  "source_instance": "instance-20261031-120104",
+  "zone": "us-central1-a",
+  "deleted_repository": "/home/longkevin05062006/Business-Meeting-Scheduling-Problem",
+  "repository_removed": true,
+  "contained_python_environment_removed": true,
+  "regular_files_removed": 6498,
+  "no_modified_tracked_files_before_removal": true,
+  "no_other_worktrees_dependent_on_repository": true,
+  "backup_commit": "4e83a37551d14861724d3980a18fd8a763d8d37a",
+  "backup_archive_sha256": "c01fa63b0cbad8fdeca5f015d598363ce784cc0446b6555bc1af7ad1833fd508",
+  "disk_before": {
+    "total_bytes": 10213466112,
+    "used_bytes": 3940298752,
+    "free_bytes": 6256390144
+  },
+  "disk_after": {
+    "total_bytes": 10213466112,
+    "used_bytes": 3522011136,
+    "free_bytes": 6674677760
+  },
+  "additional_disk_free_bytes": 418287616,
+  "standalone_uwrmaxsat_retained": true,
+  "standalone_cadical_retained": true,
+  "vm_stop_pending": false,
+  "vm_status": "TERMINATED",
+  "gcp_last_stop_timestamp": "2026-11-09T07:28:16.394-08:00",
+  "vm_status_verified_utc": "2026-11-09T15:28:44.044613+00:00"
+}

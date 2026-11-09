@@ -20,8 +20,10 @@ The archive contains:
 The Git worktree pointer and Python caches are excluded. The worktree's base
 commit is `6e5f7d7c5c9f1e3696c74a6d2c86126e4113ce42`. To recover an executable Git
 worktree, create a worktree at that commit and copy the extracted `runtime/`
-contents into it. The main repository, its Python environment, UWrMaxSAT and
-CaDiCaL installations are retained on the VM.
+contents into it. The initial cleanup retained the main repository and its
+Python environment. Both were subsequently deleted at the author's request,
+as recorded in `repository-removal.receipt.json`. Standalone UWrMaxSAT and
+CaDiCaL directories remain outside the removed checkout.
 
 These are backup copies of existing executions, not additional repetitions.
 Part 3's final three cells continue on `instance-20261104-105839`, in project
@@ -31,9 +33,18 @@ Cleanup and final VM state are recorded separately in
 `cleanup-and-stop.receipt.json` after the archive has been pushed and its remote
 source files have been rechecked.
 
-Cleanup is complete. The temporary B2B worktree, its verified export copies,
-and the generated solver inputs and helper files in `/tmp` were removed.
-The disk had 6,254,747,648 bytes free (about 5.83 GiB) after cleanup. The primary
-checkout, Python environment, UWrMaxSAT and CaDiCaL installations remain.
-GCP confirmed `TERMINATED` on 9 November 2026; the persistent boot disk remains
-attached. Parts 0 and 3 were confirmed running on their other VM after cleanup.
+The first cleanup removed the temporary B2B worktree, its verified export
+copies, and generated solver inputs and helper files in `/tmp`. The disk then
+had 6,254,747,648 bytes free (about 5.83 GiB), as recorded in
+`cleanup-and-stop.receipt.json`.
+
+At the author's subsequent request, the VM was temporarily started and
+`/home/longkevin05062006/Business-Meeting-Scheduling-Problem` was removed,
+including its `.venv-ubuntu` environment and machine-specific experiment
+configuration. There were no modified tracked files or dependent worktrees.
+This freed another 418,287,616 bytes, leaving 6,674,677,760 bytes free (about
+6.22 GiB). The persistent boot disk remains attached. The VM was stopped again;
+the verified final state is in `repository-removal.receipt.json`.
+
+Parts 0 and 3 run on `instance-20261104-105839` in the other project. Deletion
+on the retired VM does not change their runtime or output directories.
