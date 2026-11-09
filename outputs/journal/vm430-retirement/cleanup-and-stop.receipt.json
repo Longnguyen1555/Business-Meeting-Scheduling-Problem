@@ -1,0 +1,268 @@
+{
+  "cleanup_utc": "2026-11-09T14:55:34.951741+00:00",
+  "source_project": "project-4301720b-91e0-476d-bfe",
+  "source_instance": "instance-20261031-120104",
+  "zone": "us-central1-a",
+  "verified_backup_commit": "4e83a37551d14861724d3980a18fd8a763d8d37a",
+  "verified_backup_sha256": "c01fa63b0cbad8fdeca5f015d598363ce784cc0446b6555bc1af7ad1833fd508",
+  "archived_files_verified_before_initial_cleanup": 5697,
+  "remaining_files_rechecked_before_root_cleanup": 3316,
+  "partial_cleanup_permission_issue_resolved": true,
+  "removed_worktree": "/home/longkevin05062006/b2b-matched-v2",
+  "removed_export_copies": "/home/longkevin05062006/Business-Meeting-Scheduling-Problem/outputs/journal/matched-encoding-v2-results",
+  "archived_source_bytes_removed": 537804051,
+  "removed_temporary_items": [
+    {
+      "path": "/tmp/Split_Matched_Encoding_Shard.py",
+      "bytes": 9177
+    },
+    {
+      "path": "/tmp/b2b-export-matched-results-e2f735a.py",
+      "bytes": 10363
+    },
+    {
+      "path": "/tmp/b2b-finalize-nine-way-20261109.tar.gz",
+      "bytes": 4891
+    },
+    {
+      "path": "/tmp/b2b-matched-finalize-20261109",
+      "bytes": 24808
+    },
+    {
+      "path": "/tmp/b2b-part3-migration-672.receipt.json",
+      "bytes": 1315
+    },
+    {
+      "path": "/tmp/b2b-part3-migration-672.tar.gz",
+      "bytes": 3440475
+    },
+    {
+      "path": "/tmp/b2b-vm430-retirement-20261109.receipt.json",
+      "bytes": 519
+    },
+    {
+      "path": "/tmp/b2b-vm430-retirement-20261109.tar.gz",
+      "bytes": 62152127
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_0p0uuejq",
+      "bytes": 773443
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_2bvv6rn6",
+      "bytes": 6445880
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_2unis7p7",
+      "bytes": 1167753
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_3wut_br5",
+      "bytes": 1313161
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_552p5xve",
+      "bytes": 6819720
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_5rvelws4",
+      "bytes": 3479164
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_7862lzik",
+      "bytes": 7183332
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_8h91bpnt",
+      "bytes": 3328404
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_9h7s7j67",
+      "bytes": 6396540
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_9nlvm63d",
+      "bytes": 11824066
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat__5fyscwe",
+      "bytes": 6130004
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat__kj37y5d",
+      "bytes": 3603442
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_an4dcg4g",
+      "bytes": 5474257
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_c6x7voxj",
+      "bytes": 5474257
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_edlnwo65",
+      "bytes": 6396540
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_eqqvw_tl",
+      "bytes": 7644268
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_erp41faw",
+      "bytes": 7644268
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ftwqlv5d",
+      "bytes": 3429765
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_h3dz42td",
+      "bytes": 3286738
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_hv0aimzz",
+      "bytes": 3840897
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_hzdwr0bz",
+      "bytes": 11221739
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_iemvs65m",
+      "bytes": 1313161
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ilepijik",
+      "bytes": 3488942
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_it9hjj7c",
+      "bytes": 5391960
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_kpv06g5v",
+      "bytes": 1142716
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_kssm8mey",
+      "bytes": 10042615
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_l4x3uqzk",
+      "bytes": 3603442
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_l6y25pkc",
+      "bytes": 3457168
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ld3nasn3",
+      "bytes": 3840897
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_loogw0hg",
+      "bytes": 10411787
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ncx0vuxz",
+      "bytes": 6569485
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_o1c9viyi",
+      "bytes": 4554156
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ov04rtdm",
+      "bytes": 6569485
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_pg3wch2f",
+      "bytes": 10411787
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_pvclh638",
+      "bytes": 11824066
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_q8a9945j",
+      "bytes": 3488942
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_q8dpbmpc",
+      "bytes": 11221739
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_qug_dr_2",
+      "bytes": 5765142
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_uewxdj8u",
+      "bytes": 5765142
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_v2hy7nff",
+      "bytes": 6765541
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_vkf28m71",
+      "bytes": 4554156
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_vkncyelo",
+      "bytes": 5391960
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_x7pj01yb",
+      "bytes": 3479164
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_ypulnnq6",
+      "bytes": 3429765
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_zes6d1_9",
+      "bytes": 6765541
+    },
+    {
+      "path": "/tmp/b2b_uwrmaxsat_zhq8uxf1",
+      "bytes": 7183332
+    },
+    {
+      "path": "/tmp/matched-split-3-of-9.tar.gz",
+      "bytes": 1028634
+    },
+    {
+      "path": "/tmp/shard-1-of-3.tar.gz",
+      "bytes": 5141761
+    }
+  ],
+  "temporary_bytes_removed": 331123799,
+  "disk_before_final_cleanup": {
+    "total_bytes": 10213466112,
+    "used_bytes": 4698726400,
+    "free_bytes": 5497962496
+  },
+  "disk_after": {
+    "total_bytes": 10213466112,
+    "used_bytes": 3941941248,
+    "free_bytes": 6254747648
+  },
+  "primary_repository_retained": true,
+  "retained_file_hashes_unchanged": true,
+  "python_environment_retained": true,
+  "solver_installations_retained": true,
+  "no_b2b_worker_running": true,
+  "remaining_worktrees": "worktree /home/longkevin05062006/Business-Meeting-Scheduling-Problem\nHEAD 63a2f17a345d4c71cde7ad6143ed850c4e54357a\nbranch refs/heads/journal-compact-objectives\n\n",
+  "vm_stop_pending": false,
+  "vm_status": "TERMINATED",
+  "vm_state_verified_utc": "2026-11-09T14:57:36.182601+00:00",
+  "gcp_last_stop_timestamp": "2026-11-09T06:57:12.436-08:00",
+  "attached_disks_retained": [
+    {
+      "source": "https://www.googleapis.com/compute/v1/projects/project-4301720b-91e0-476d-bfe/zones/us-central1-a/disks/instance-20261031-120104",
+      "boot": true
+    }
+  ],
+  "active_part_0_and_3_confirmed_on_other_vm": "instance-20261104-105839"
+}

@@ -30,3 +30,10 @@ Part 3's final three cells continue on `instance-20261104-105839`, in project
 Cleanup and final VM state are recorded separately in
 `cleanup-and-stop.receipt.json` after the archive has been pushed and its remote
 source files have been rechecked.
+
+Cleanup is complete. The temporary B2B worktree, its verified export copies,
+and the generated solver inputs and helper files in `/tmp` were removed.
+The disk had 6,254,747,648 bytes free (about 5.83 GiB) after cleanup. The primary
+checkout, Python environment, UWrMaxSAT and CaDiCaL installations remain.
+GCP confirmed `TERMINATED` on 9 November 2026; the persistent boot disk remains
+attached. Parts 0 and 3 were confirmed running on their other VM after cleanup.
