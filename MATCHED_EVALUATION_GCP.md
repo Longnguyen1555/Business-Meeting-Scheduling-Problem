@@ -1,5 +1,35 @@
 # Matched encoding evaluation: three identical GCP VMs
 
+## Completed results
+
+The campaign finished on 10 November 2026 at 05:27 Vietnam time. All 6,102
+target cells are present: 3,402 for All-126, 1,620 for Stress, and 1,080 for
+Stress-high. These comprise 4,960 reused results and all 1,142 additional runs.
+There are 4,577 OPTIMAL results, 1,017 UNSAT results, and 508 valid timeouts;
+there are no missing, duplicate, or ERROR cells.
+
+The final three execution partitions (0, 3, and 6 of 9) were downloaded and
+verified against their export manifests. The merged matrix passed configuration,
+formula, and objective-agreement checks. All 226 benchmark contents were checked
+by SHA-256, and all 4,577 optimal schedules were independently checked for
+feasibility and objective values.
+
+The complete merged archive and validation reports are in
+[`outputs/journal/matched-encoding-v2-results`](outputs/journal/matched-encoding-v2-results):
+
+- `matched-encoding-v2-complete.tar.gz`: all merged raw records, normalized CSVs,
+  source provenance, and validation reports, with a per-file SHA-256 manifest.
+- `matched-encoding-v2-complete.receipt.json`: archive SHA-256 and size.
+- `complete-validation_report.json`: complete coverage and campaign validation.
+- `complete-scientific_validation_report.json`: independent schedule checks,
+  formula invariance, objective agreement, and matrix validation by dataset.
+
+The manuscript tables and figures have not yet been updated to three-run
+aggregates. The instructions below record the completed campaign setup; no
+additional execution is required to fill this matrix.
+
+## Campaign setup
+
 This campaign completes three repetitions for Direct, Compact-Base, and
 Compact-Objective under BG-d2, IR, and IR-IM-IS on all three benchmark sets.
 It contains 6,102 target cells, 4,960 validated reused cells, and 1,142 new runs.

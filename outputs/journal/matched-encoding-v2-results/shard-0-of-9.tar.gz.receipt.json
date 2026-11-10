@@ -1,0 +1,21 @@
+{
+  "archive": "/home/duc933827/Business-Meeting-Scheduling-Problem/outputs/journal/matched-encoding-v2-results/shard-0-of-9.tar.gz",
+  "archive_bytes": 1978112,
+  "archive_sha256": "b0857c71e9cac04babf352ca14244626c651dc5756f737a3454589e80f929922",
+  "complete": true,
+  "expected_cells": 702,
+  "file_count": 137,
+  "missing_cells": 0,
+  "nonterminal_cells": 0,
+  "observed_cells": 702,
+  "outcomes": {
+    "OPTIMAL": 467,
+    "TIMEOUT": 73,
+    "UNSAT": 162
+  },
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "raw_attempts": 702,
+  "shard_count": 9,
+  "shard_index": 0,
+  "validation_scope": "record coverage and statuses; independent scientific validation follows after transfer"
+}

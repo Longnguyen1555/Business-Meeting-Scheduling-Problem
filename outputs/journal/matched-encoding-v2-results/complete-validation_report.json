@@ -1,0 +1,49 @@
+{
+  "agreement_groups_checked": 1860,
+  "boot_ids": [
+    "0c0b5b32-ea8b-47e5-aba0-49294b9d1541",
+    "1aeb38a3-0a2e-422d-affe-efee6da09ad9",
+    "27f7a51e-6748-4ce1-9237-a290fce94dcf",
+    "4146035f-5024-4a6c-9f99-dfa29a5ecd52",
+    "4aef873b-a000-43b3-95db-9d197bcd8c98",
+    "680c143c-c5e5-41dd-a037-232176848e6f",
+    "6b4968d0-4f01-42a6-9fe7-7f15f32ce0f9",
+    "91dce565-5649-41c4-ba85-66285854bf7c",
+    "9d6088a6-966d-4d68-ab3d-aba6829df639",
+    "9e4650e9-243f-470a-912c-0f2a05fe35b5",
+    "aa2cb780-1153-446c-971a-de666af21c2f",
+    "b9133d7d-d415-4227-bb59-4c6818db6e0e",
+    "dec4e119-662d-45aa-9b63-3f0037ed92a0",
+    "efa4b90b-a323-4844-a245-b1b1976d9b92"
+  ],
+  "common_gcp_environment_assumed": true,
+  "environment_drift_accepted": true,
+  "errors": [],
+  "extra_jobs": 0,
+  "feasibility_classes": {
+    "base_feasible_bg_cap_unsat": 6,
+    "base_unsat": 111,
+    "bg_d2_feasible": 514,
+    "unclassified": 47
+  },
+  "latest_attempts": 6102,
+  "missing_jobs": 0,
+  "peak_memory_limit_mb": null,
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "planned_jobs": 6102,
+  "raw_attempts": 6102,
+  "result_origin_counts": {
+    "executed": 1142,
+    "reused": 4960
+  },
+  "reuse_policy": "validated_common_gcp",
+  "status_counts": {
+    "OPTIMAL": 4577,
+    "TIMEOUT": 508,
+    "UNSAT": 1017
+  },
+  "unique_contents": 226,
+  "unique_lineages": 20,
+  "valid": true,
+  "validated_utc": "2026-11-10T00:47:33+00:00"
+}

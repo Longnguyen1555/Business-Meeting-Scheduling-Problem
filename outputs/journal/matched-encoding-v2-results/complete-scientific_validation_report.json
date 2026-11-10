@@ -1,0 +1,53 @@
+{
+  "checked_utc": "2026-11-10T00:48:11.756034+00:00",
+  "valid": true,
+  "plan_sha256": "deb930057978a6a7bd859a3b2d321fb44b0cf7a20e2978baed4740efac97ac9f",
+  "target_cells": 6102,
+  "observed_cells": 6102,
+  "independent_optimal_schedules_checked": 4577,
+  "benchmark_contents_sha256_checked": 226,
+  "formula_repetition_groups_checked": 2034,
+  "status_counts": {
+    "OPTIMAL": 4577,
+    "UNSAT": 1017,
+    "TIMEOUT": 508
+  },
+  "result_origin_counts": {
+    "reused": 4960,
+    "executed": 1142
+  },
+  "matrix_validation": {
+    "valid": true,
+    "row_count": 6102,
+    "datasets": {
+      "All-126": {
+        "valid": true,
+        "errors": [],
+        "row_count": 3402,
+        "expected_row_count": 3402,
+        "unique_instance_count": 126,
+        "duplicate_cell_count": 0
+      },
+      "Stress": {
+        "valid": true,
+        "errors": [],
+        "row_count": 1620,
+        "expected_row_count": 1620,
+        "unique_instance_count": 60,
+        "duplicate_cell_count": 0
+      },
+      "Stress-high": {
+        "valid": true,
+        "errors": [],
+        "row_count": 1080,
+        "expected_row_count": 1080,
+        "unique_instance_count": 40,
+        "duplicate_cell_count": 0
+      }
+    }
+  },
+  "normalized_csv_sha256": "a972ba988862edb765f7d67afcf03eb2c9f18f4ac46f2e9d7f2e6781b5056298",
+  "raw_jsonl_sha256": "f52cc9e9f840cbf9bd9c167b5211e5ccca1f493b629a3dd7dce69dfc523a7c55",
+  "errors": [],
+  "manuscript_results_updated": false
+}
