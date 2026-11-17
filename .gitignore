@@ -1,29 +1,84 @@
-# Local environments and Python caches
-.venv*/
-venv/
-.vscode/
-__pycache__/
-*.py[cod]
-.pytest_cache/
+# Default: ignore everything. Only the research files below are tracked.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/instances_manifest.csv
 
-# Machine metadata and local configuration
-.DS_Store
-._*
-__MACOSX/
-journal_gcp.env
-/noves/
+# Source code and pinned dependencies
+!/src/
+/src/*
+!/src/*.py
+!/src/requirements.txt
+!/src/requirements-exact.txt
 
-# Generated formulas, logs, archives, and experiment outputs
-*.wcnf
-*.cnf
-*.log
-*.lock
-*.zip
-*.tar.gz
-/output/
+# Matched-campaign launcher referenced by the source
+!/scripts/
+/scripts/*
+!/scripts/run_matched_encoding_three_vms.sh
+
+# Configurations of the reported studies
+!/journal_configs/
+/journal_configs/*
+!/journal_configs/all126_first.json
+!/journal_configs/all126_first_blocks.json
+!/journal_configs/bg_dinf_quality.json
+!/journal_configs/bg_dinf_quality_blocks.json
+!/journal_configs/compact_ablation.json
+!/journal_configs/compact_ablation_blocks.json
+!/journal_configs/compact_f_ablation.json
+!/journal_configs/compact_f_blocks.json
+!/journal_configs/compact_objectives.json
+!/journal_configs/compact_objectives_blocks.json
+!/journal_configs/conference_consistency_sources.json
+!/journal_configs/conference_historical_reuse.json
+!/journal_configs/conference_ir_reruns.json
+!/journal_configs/conference_ir_reruns_blocks.json
+!/journal_configs/conference_reference.json
+!/journal_configs/conference_reference_blocks.json
+!/journal_configs/cross_generation_evaluation.json
+!/journal_configs/cross_generation_evaluation_blocks.json
+!/journal_configs/main_objectives.json
+!/journal_configs/main_objectives_blocks.json
+!/journal_configs/matched_encoding_evaluation_v2.json
+!/journal_configs/objective_aware_evaluation.json
+!/journal_configs/objective_aware_evaluation_blocks.json
+
+# Benchmark inputs and their data records
+!/data_table03_origin/
+/data_table03_origin/*
+!/data_table03_origin/*.dzn
+!/data_table03_origin/*.csv
+!/data_table03_origin/*.json
+!/data_table06_forb/
+/data_table06_forb/*
+!/data_table06_forb/*.dzn
+!/data_table06_forb/*.csv
+!/data_table06_forb/*.json
+!/data_table07_fixed/
+/data_table07_fixed/*
+!/data_table07_fixed/*.dzn
+!/data_table07_fixed/*.csv
+!/data_table07_fixed/*.json
+!/data_table08_prec/
+/data_table08_prec/*
+!/data_table08_prec/*.dzn
+!/data_table08_prec/*.csv
+!/data_table08_prec/*.json
+!/data_precedence_stress/
+/data_precedence_stress/*
+!/data_precedence_stress/*.dzn
+!/data_precedence_stress/*.csv
+!/data_precedence_stress/*.json
+!/data_precedence_stress_high/
+/data_precedence_stress_high/*
+!/data_precedence_stress_high/*.dzn
+!/data_precedence_stress_high/*.csv
+!/data_precedence_stress_high/*.json
+
+# Reference results; raw runs are distributed in the separate package
+!/outputs/
 /outputs/*
-
-# Versioned reference results; raw runs are distributed separately.
 !/outputs/cross_generation_analysis/
 /outputs/cross_generation_analysis/*
 !/outputs/cross_generation_analysis/*.csv
