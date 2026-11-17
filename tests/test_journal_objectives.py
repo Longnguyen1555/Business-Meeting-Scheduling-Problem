@@ -242,12 +242,28 @@ class JournalObjectiveFamilyTests(unittest.TestCase):
             objective_mode="bg_d2",
             backend="rc2",
         ).solve()
+        no_homogeneity = B2BMaxSATSolver(
+            instance,
+            precedence_mode="traditional",
+            encoding_variant="basic",
+            objective_mode="bg_dinf",
+            backend="rc2",
+        ).solve()
         self.assertEqual(base["status"], "OPTIMAL")
         self.assertEqual(historical["status"], "UNSAT")
+        self.assertEqual(no_homogeneity["status"], "OPTIMAL")
+        self.assertEqual(no_homogeneity["objective_vector"], (3,))
+        self.assertEqual(no_homogeneity["stats"].break_group_range, 3)
 
     def test_encoded_metrics_match_independent_evaluator_exhaustively(self) -> None:
         instance = _lexicographic_tie_instance()
-        for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+        for objective_mode in (
+            "ir",
+            "bg_d2",
+            "bg_dinf",
+            "ir_is",
+            "bg_ir_is",
+        ):
             model = B2BSATModel(
                 instance,
                 precedence_mode="traditional",
@@ -297,7 +313,13 @@ class JournalObjectiveFamilyTests(unittest.TestCase):
                 )
                 if not checker.validate_assignment(list(assignment))
             ]
-            for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+            for objective_mode in (
+                "ir",
+                "bg_d2",
+                "bg_dinf",
+                "ir_is",
+                "bg_ir_is",
+            ):
                 feasible_vectors = []
                 for assignment in feasible_assignments:
                     metrics = evaluate_journal_schedule(
@@ -348,7 +370,13 @@ class JournalObjectiveFamilyTests(unittest.TestCase):
 
     def test_all_boolean_optimizers_and_domains_agree_on_every_mode(self) -> None:
         instance = _fixed_positive_instance()
-        for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+        for objective_mode in (
+            "ir",
+            "bg_d2",
+            "bg_dinf",
+            "ir_is",
+            "bg_ir_is",
+        ):
             vectors = []
             for domain_mode in ("full", "reduced"):
                 solvers = (
@@ -388,7 +416,13 @@ class JournalObjectiveFamilyTests(unittest.TestCase):
 
     def test_weighted_maxsat_cost_reconstructs_every_objective_vector(self) -> None:
         instance = _fixed_positive_instance()
-        for objective_mode in ("ir", "bg_d2", "ir_is", "bg_ir_is"):
+        for objective_mode in (
+            "ir",
+            "bg_d2",
+            "bg_dinf",
+            "ir_is",
+            "bg_ir_is",
+        ):
             result = B2BMaxSATSolver(
                 instance,
                 precedence_mode="traditional",

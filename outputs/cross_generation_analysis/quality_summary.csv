@@ -1,0 +1,4 @@
+objective,instances,median_total_break_groups,median_idle_range_pstar,median_maximum_internal_idle_slots,median_total_internal_idle_slots,median_population_sd_idle_slots
+BG-dinf,84,1.5,2.5,2.5,5.0,0.5176649905031879
+IR,84,35.0,1.0,2.0,45.5,0.4929016131216175
+IR-IM-IS,84,4.0,1.0,1.0,6.5,0.3469659727870604

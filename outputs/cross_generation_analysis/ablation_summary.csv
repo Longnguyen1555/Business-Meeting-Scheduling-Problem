@@ -1,0 +1,26 @@
+objective,step,configuration,baseline_configuration,median_variables,median_clauses,median_literals,paired_median_clause_reduction_percent
+BG-d2,Reference,B,,31250.5,81521.5,197520.5,
+BG-d2,Zero-break simplification,B + ZB,bg_reference,27176.5,72991.5,167541.5,13.32794006255748
+BG-d2,Demand-driven states,B + DS,bg_reference,30589.0,79668.5,193283.5,2.202481059103489
+BG-d2,Combined simplifications,B + ZB + DS,bg_reference,26515.0,71138.5,163304.5,16.770581407129523
+BG-d2,Adaptive at-most-one encoding,B + ZB + DS + AMO,bg_ac,27736.0,66318.0,153675.0,3.927974554516891
+IR,Reference,B,,26727.5,72487.0,167045.5,
+IR,Demand-driven states,B + DS,ir_reference,26535.5,72109.0,166289.5,0.7519771777251498
+IR,Direct range costs,B + RC,ir_reference,26720.0,72464.5,167000.5,0.03533295117435099
+IR,Combined simplifications,B + DS + RC,ir_reference,26528.0,72086.5,166244.5,0.7956611007312261
+IR,Adaptive at-most-one encoding,B + DS + RC + AMO,ir_cd,27750.0,67255.5,156592.0,3.689848579358138
+IR,Optional attainable-value compression,B + DS + RC + AMO + AV,ir_cdf,27739.0,67201.5,156464.5,0.19427290777160056
+IR-IM-IS,Reference,B,,26727.5,72612.5,167171.0,
+IR-IM-IS,Demand-driven states,B + DS,irimis_reference,26535.5,72234.5,166415.0,0.7497848071816062
+IR-IM-IS,Direct range costs,B + RC,irimis_reference,26720.0,72590.0,167126.0,0.03514916827001226
+IR-IM-IS,Combined simplifications,B + DS + RC,irimis_reference,26528.0,72212.0,166370.0,0.7930644793891417
+IR-IM-IS,Adaptive at-most-one encoding,B + DS + RC + AMO,irimis_cd,27750.0,67381.0,156717.5,3.682398886544764
+IR-IM-IS,Optional attainable-value compression,B + DS + RC + AMO + AV,irimis_cdf,27739.0,67326.0,156589.0,0.19978405642761776
+IS,Dense idle thresholds,DT,,27735.0,67220.0,156300.0,
+IS,Direct idle-slot clauses,DI,DT,27088.0,64383.0,149982.0,5.9205292429928615
+ISQ,Dense idle thresholds,DT,,27735.0,67220.0,156300.0,
+ISQ,Attainable-value compression,AV,DT,27733.0,67201.5,156258.5,0.0750314571080015
+IM-IS,Dense idle thresholds,DT,,27742.5,67353.0,156669.0,
+IM-IS,Attainable-value compression,AV,DT,27739.0,67318.5,156581.5,0.14728507662759793
+IR-IS,Dense idle thresholds,DT,,27750.0,67373.5,156710.0,
+IR-IS,Attainable-value compression,AV,DT,27739.0,67318.5,156581.5,0.19982446932758707

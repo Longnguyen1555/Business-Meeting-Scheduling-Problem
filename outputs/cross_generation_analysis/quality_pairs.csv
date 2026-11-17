@@ -1,0 +1,10 @@
+left_objective,right_objective,measure,lower,equal,higher
+IR-IM-IS,IR,maximum_internal_idle_slots,11,73,0
+IR-IM-IS,IR,total_internal_idle_slots,56,28,0
+IR-IM-IS,IR,population_sd_idle_slots,45,39,0
+BG-dinf,IR,total_break_groups,57,27,0
+BG-dinf,IR,total_internal_idle_slots,57,27,0
+BG-dinf,IR,population_sd_idle_slots,30,33,21
+BG-dinf,IR-IM-IS,total_break_groups,32,52,0
+BG-dinf,IR-IM-IS,total_internal_idle_slots,10,43,31
+BG-dinf,IR-IM-IS,population_sd_idle_slots,0,43,41

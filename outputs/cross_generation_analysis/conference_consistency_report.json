@@ -1,0 +1,174 @@
+{
+  "valid": true,
+  "checked_utc": "2026-11-13T05:54:15.915126+00:00",
+  "sources": [
+    {
+      "path": "manuscript/conference_101719.tex",
+      "location": "workspace",
+      "sha256": "2d7ffee7a120448306b5cef1727bd24d6b2785948d90c8348447c6c3883872f1"
+    },
+    {
+      "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table03_origin_detailed.csv",
+      "sha256": "7615b0cab817f12a3fd813f0db8dc20c9049325cabfef56b2d13838a39ff66bb"
+    },
+    {
+      "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table06_forb_detailed.csv",
+      "sha256": "9163f1c9dcd28c35f6d86cc85a00a9e2cd6b586b7c44837515d5c2852898991c"
+    },
+    {
+      "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table07_fixed_detailed.csv",
+      "sha256": "f72a8eac9943b71a3b0369704f33e6f2ab806a7d33bc09be2f48cc31a3f250ca"
+    },
+    {
+      "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table08_prec_detailed.csv",
+      "sha256": "d667a5a3825dbd764bfcf40901056be883147b7fa2b4d3405e0a9c042237922f"
+    },
+    {
+      "path": "output/rerun_old_B2B_Instance_full_matrix/data_precedence_stress/data_precedence_stress_detailed.csv",
+      "git_commit": "95ea55b63072867e5da6388d2f8b5e1747bcb0dc",
+      "sha256": "6874e50ec5c67c6fab9b79193f4e39a2a2a2c1a99d35abef3fbd4a0685c91314"
+    },
+    {
+      "path": "output/rerun_old_B2B_Instance_full_matrix/data_precedence_stress_high/data_precedence_stress_high_detailed.csv",
+      "git_commit": "95ea55b63072867e5da6388d2f8b5e1747bcb0dc",
+      "sha256": "ac6933b56a95059a1d8e00cb675b59e6644c043718c12fe7acf89cea68d032fd"
+    }
+  ],
+  "mapping": "conference compact formulation = Compact-Base",
+  "solved_definition": "OPTIMAL + UNSAT",
+  "datasets": {
+    "All-126": {
+      "valid": true,
+      "instances": 126,
+      "checks": [
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 1,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 2,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 3,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 1,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 0
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 2,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 0
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 3,
+          "instances": 126,
+          "OPTIMAL": 89,
+          "UNSAT": 37,
+          "TIMEOUT": 0,
+          "Solved": 126,
+          "formula_fields_checked": 0
+        }
+      ]
+    },
+    "Stress-100": {
+      "valid": true,
+      "instances": 100,
+      "checks": [
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 1,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 2,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_base_ir",
+          "repetition": 3,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 35
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 1,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 0
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 2,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 0
+        },
+        {
+          "configuration": "compact_objective_ir",
+          "repetition": 3,
+          "instances": 100,
+          "OPTIMAL": 100,
+          "UNSAT": 0,
+          "TIMEOUT": 0,
+          "Solved": 100,
+          "formula_fields_checked": 0
+        }
+      ]
+    }
+  },
+  "runtime_comparison": "conference one-run values and JAIR three-run aggregates are distinct statistics"
+}

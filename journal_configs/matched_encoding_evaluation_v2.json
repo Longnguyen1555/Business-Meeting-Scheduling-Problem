@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-matched-encoding-evaluation-v2",
+  "description": "Three encodings and three objectives on All-126, Stress, and Stress-high, with three independent executions per instance and configuration.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20261030,
+  "uwrmaxsat_sha256": "29c51abeabd43015c75a8e6ee789fdbb9aa2803096d2cac536ec60bd516ab4a7",
+  "require_clean_worktree": true,
+  "reuse_policy": "validated_common_gcp",
+  "expected_job_count": 6102,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "datasets": [
+    {"id": "official_all_126", "manifest": "instances_manifest.csv", "family": "all"},
+    {"id": "stress", "manifest": "data_precedence_stress/instances_manifest.csv", "family": "all"},
+    {"id": "stress_high", "manifest": "data_precedence_stress_high/instances_manifest.csv", "family": "all"}
+  ],
+  "blocks_from": "cross_generation_evaluation_blocks.json",
+  "block_datasets": {"cross_generation_three_by_three": ["official_all_126", "stress", "stress_high"]}
+}

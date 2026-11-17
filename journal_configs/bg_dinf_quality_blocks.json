@@ -1,0 +1,29 @@
+{
+  "description": "Compact BG-d-infinity quality control on the same base-feasible schedule set as the idle policies.",
+  "blocks": [
+    {
+      "id": "compact_bg_dinf_quality",
+      "datasets": [
+        "official_all_126"
+      ],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "id": "bg_dinf_cf",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_dinf",
+          "compact_encoding": "demand_driven",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

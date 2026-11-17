@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-compact-f-ablation-v1",
+  "description": "Paired pairwise/adaptive-commander collision-AMO ablation on optimized A-D over All-126; 2,268 runs.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260909,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks_from": "compact_f_blocks.json"
+}

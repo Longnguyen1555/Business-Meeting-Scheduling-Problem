@@ -1,0 +1,10 @@
+objective,encoding,baseline,paired_OPT_instances,paired_median_runtime_ratio
+BG-d2,Compact-Base,Direct,87,0.49697620785771174
+BG-d2,Compact-Objective,Direct,87,0.515077619509762
+BG-d2,Compact-Objective,Compact-Base,87,1.0856064588234693
+IR,Compact-Base,Direct,89,0.6986983205477441
+IR,Compact-Objective,Direct,89,0.8849705652883183
+IR,Compact-Objective,Compact-Base,89,1.107796473024108
+IR-IM-IS,Compact-Base,Direct,83,0.7759520467306646
+IR-IM-IS,Compact-Objective,Direct,83,0.8659108923566375
+IR-IM-IS,Compact-Objective,Compact-Base,83,1.0617966220730057

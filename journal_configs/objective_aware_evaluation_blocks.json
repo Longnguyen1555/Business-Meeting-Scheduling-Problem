@@ -1,0 +1,167 @@
+{
+  "description": "Matched-objective evaluation of the direct per-slot, base compact, and objective-aware compact encodings. The break-group objective is included only in the schedule-quality comparison.",
+  "blocks": [
+    {
+      "id": "matched_waiting_objectives",
+      "datasets": ["official_all_126"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "direct_is",
+          "executor": "direct_idle",
+          "objective_mode": "is"
+        },
+        {
+          "id": "base_compact_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "objective_aware_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "is",
+          "compact_encoding": "objective_aware",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "direct_isq",
+          "executor": "direct_idle",
+          "objective_mode": "isq"
+        },
+        {
+          "id": "base_compact_isq",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "isq",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "objective_aware_isq",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "isq",
+          "compact_encoding": "objective_aware",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "direct_im_is",
+          "executor": "direct_idle",
+          "objective_mode": "im_is"
+        },
+        {
+          "id": "base_compact_im_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "im_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "objective_aware_im_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "im_is",
+          "compact_encoding": "objective_aware",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "direct_ir_is",
+          "executor": "direct_idle",
+          "objective_mode": "ir_is"
+        },
+        {
+          "id": "base_compact_ir_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "objective_aware_ir_is",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "compact_encoding": "objective_aware",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "break_groups_without_homogeneity",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_dinf",
+          "compact_encoding": "optimized",
+          "collision_amo": "adaptive_commander",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

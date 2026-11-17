@@ -1,0 +1,10 @@
+objective,encoding,instances,median_variables,median_clauses,median_literals
+BG-d2,Direct,126,79877.0,170517.0,424056.0
+BG-d2,Compact-Base,126,31250.5,81521.5,197520.5
+BG-d2,Compact-Objective,126,27736.0,66318.0,153675.0
+IR,Direct,126,27859.0,93183.5,213157.5
+IR,Compact-Base,126,26727.5,72487.0,167045.5
+IR,Compact-Objective,126,27750.0,67255.5,156592.0
+IR-IM-IS,Direct,126,27859.0,93609.5,213577.5
+IR-IM-IS,Compact-Base,126,26727.5,72612.5,167171.0
+IR-IM-IS,Compact-Objective,126,27750.0,67381.0,156717.5

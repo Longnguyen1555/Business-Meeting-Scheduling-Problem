@@ -1,12 +1,33 @@
-*.pyc
-/venv
-/.venv
-/.vscode
-/outputs
-.venv/
-.venv-ubuntu/
+# Local environments and Python caches
+.venv*/
+venv/
+.vscode/
 __pycache__/
-*.log
+*.py[cod]
+.pytest_cache/
+
+# Machine metadata and local configuration
+.DS_Store
+._*
+__MACOSX/
 journal_gcp.env
-/.DS_Store
 /noves/
+
+# Generated formulas, logs, archives, and experiment outputs
+*.wcnf
+*.cnf
+*.log
+*.lock
+*.zip
+*.tar.gz
+/output/
+/outputs/*
+
+# Versioned reference results; raw runs are distributed separately.
+!/outputs/cross_generation_analysis/
+/outputs/cross_generation_analysis/*
+!/outputs/cross_generation_analysis/*.csv
+!/outputs/cross_generation_analysis/analysis_report.json
+!/outputs/cross_generation_analysis/conference_consistency_report.json
+/outputs/cross_generation_analysis/remaining_runs.csv
+/outputs/cross_generation_analysis/reuse_inventory.csv

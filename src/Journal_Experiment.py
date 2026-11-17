@@ -9,16 +9,22 @@ import platform
 import random
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
 from Dataset_Manifest import file_sha256
+from B2B_Instance import (
+    VALID_COLLISION_AMO_ENCODINGS,
+    VALID_COMPACT_ENCODINGS,
+)
 from Main import InstanceSpec, collect_instances, write_detailed_csv
 from MaxSAT_Solver import executable_sha256, resolve_uwrmaxsat_binary
 
@@ -31,8 +37,15 @@ except ImportError:  # pragma: no cover - production requirements include psutil
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
 TERMINAL_STATUSES = {"OPTIMAL", "UNSAT", "TIMEOUT"}
-SUPPORTED_EXECUTORS = {"main", "org_bg_d2", "org_ir"}
+SUPPORTED_EXECUTORS = {
+    "main",
+    "org_bg_d2",
+    "org_ir",
+    "org_idle",
+    "direct_idle",
+}
 SUPPORTED_BOOLEAN_SOLVERS = {"maxsat", "multiple", "incremental"}
+EXECUTION_SHARD_POLICY = "content_rank_round_robin_v1"
 
 
 class CampaignInterrupted(Exception):
@@ -48,17 +61,17 @@ def _boot_id() -> str:
 
 
 def _cpu_model() -> str:
-    value = platform.processor().strip()
-    if value:
-        return value
     try:
         with Path("/proc/cpuinfo").open(encoding="utf-8") as stream:
             for line in stream:
                 if line.lower().startswith("model name"):
-                    return line.split(":", 1)[1].strip()
+                    value = line.split(":", 1)[1].strip()
+                    if value:
+                        return value
     except OSError:
         pass
-    return ""
+
+    return platform.processor().strip()
 
 
 def _cpu_governor() -> str:
@@ -303,10 +316,81 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
         if configuration.get("objective_mode") not in {
             "ir",
             "bg_d2",
+            "bg_dinf",
             "ir_is",
+            "ir_im_is",
+            "ir_im_isq",
             "bg_ir_is",
+            "is",
+            "isq",
+            "im_is",
         }:
             raise ValueError(f"invalid objective mode in {config_id!r}")
+        compact_encoding = configuration.get("compact_encoding", "reference")
+        if compact_encoding not in VALID_COMPACT_ENCODINGS:
+            raise ValueError(
+                f"invalid compact encoding in {config_id!r}: "
+                f"{compact_encoding!r}"
+            )
+        if (
+            solver in {"multiple", "incremental"}
+            and configuration["objective_mode"]
+            in {"ir", "ir_is", "ir_im_is", "ir_im_isq", "bg_ir_is"}
+            and compact_encoding in {"direct_range_soft", "optimized"}
+        ):
+            raise ValueError(
+                f"{compact_encoding!r} is MaxSAT-only for "
+                f"{configuration['objective_mode']!r} in {config_id!r}"
+            )
+        if configuration["objective_mode"] in {"isq", "ir_im_isq"} and solver != "maxsat":
+            raise ValueError("ISQ requires MaxSAT weighted penalties")
+        if (
+            compact_encoding == "objective_aware"
+            and configuration["objective_mode"]
+            in {
+                "ir",
+                "ir_is",
+                "ir_im_is",
+                "ir_im_isq",
+                "bg_ir_is",
+                "is",
+                "isq",
+                "im_is",
+            }
+            and solver != "maxsat"
+        ):
+            raise ValueError(
+                "objective_aware waiting objectives require MaxSAT"
+            )
+        cap_rule = configuration.get("participant_idle_cap_rule", "none")
+        if cap_rule not in {"none", "interpolated_bounds"}:
+            raise ValueError(f"invalid participant idle cap rule in {config_id!r}")
+        try:
+            cap_alpha = Fraction(
+                str(configuration.get("participant_idle_cap_alpha", "1/2"))
+            )
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError(
+                f"invalid participant idle cap alpha in {config_id!r}"
+            ) from exc
+        if not 0 <= cap_alpha <= 1:
+            raise ValueError(
+                f"participant idle cap alpha outside [0,1] in {config_id!r}"
+            )
+        if cap_rule != "none" and configuration["objective_mode"] not in {
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError(
+                f"participant idle caps do not apply to "
+                f"{configuration['objective_mode']!r} in {config_id!r}"
+            )
+        collision_amo = configuration.get("collision_amo", "pairwise")
+        if collision_amo not in VALID_COLLISION_AMO_ENCODINGS:
+            raise ValueError(
+                f"invalid collision AMO in {config_id!r}: "
+                f"{collision_amo!r}"
+            )
         for field in (
             "domain_mode",
             "precedence_encoding",
@@ -322,6 +406,42 @@ def _validate_configuration(configuration: dict[str, Any]) -> None:
     elif executor == "org_ir":
         if configuration.get("objective_mode", "ir") != "ir":
             raise ValueError("org_ir executor only supports ir")
+    elif executor in {"org_idle", "direct_idle"}:
+        if configuration.get("objective_mode") not in {
+            "ir",
+            "is",
+            "isq",
+            "im_is",
+            "ir_is",
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError(
+                "direct_idle has an unsupported waiting objective"
+            )
+        cap_rule = configuration.get("participant_idle_cap_rule", "none")
+        if cap_rule not in {"none", "interpolated_bounds"}:
+            raise ValueError(
+                "direct_idle has an invalid participant idle cap rule"
+            )
+        if (
+            cap_rule != "none"
+            and configuration["objective_mode"]
+            not in {"ir_im_is", "ir_im_isq"}
+        ):
+            raise ValueError(
+                "direct_idle caps apply only to ir_im_is and ir_im_isq"
+            )
+        try:
+            alpha = Fraction(
+                str(configuration.get("participant_idle_cap_alpha", "1/2"))
+            )
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError("direct_idle has an invalid cap alpha") from exc
+        if not 0 <= alpha <= 1:
+            raise ValueError(
+                "direct_idle participant idle cap alpha lies outside [0,1]"
+            )
 
 
 def _balanced_instance_order(
@@ -445,6 +565,79 @@ def build_plan(
                     )
     if not jobs:
         raise ValueError("the selected block filter produced no jobs")
+    expected_jobs = config.get("expected_job_count")
+    if not only_blocks and expected_jobs is not None and len(jobs) != int(expected_jobs):
+        raise ValueError(f"frozen campaign expects {expected_jobs} jobs, got {len(jobs)}")
+    reuse_results = config.get("reuse_results", [])
+    if not isinstance(reuse_results, list):
+        raise ValueError("reuse_results must be a list")
+    normalized_reuse_results: list[dict[str, Any]] = []
+    target_cells = {
+        (
+            str(job["experiment_block"]),
+            str(job["planned_configuration_id"]),
+            int(job["repetition"]),
+        )
+        for job in jobs
+    }
+    seen_reuse_targets: set[tuple[str, str, int]] = set()
+    required_reuse_fields = (
+        "source_campaign_id",
+        "source_block_id",
+        "source_configuration_id",
+        "source_repetition",
+        "target_block_id",
+        "target_configuration_id",
+        "target_repetition",
+    )
+    for position, raw_rule in enumerate(reuse_results, start=1):
+        if not isinstance(raw_rule, dict):
+            raise ValueError(f"reuse_results entry {position} must be an object")
+        missing_fields = [
+            field for field in required_reuse_fields if field not in raw_rule
+        ]
+        if missing_fields:
+            raise ValueError(
+                f"reuse_results entry {position} is missing: "
+                + ", ".join(missing_fields)
+            )
+        rule = {
+            "source_campaign_id": str(raw_rule["source_campaign_id"]),
+            "source_block_id": str(raw_rule["source_block_id"]),
+            "source_configuration_id": str(
+                raw_rule["source_configuration_id"]
+            ),
+            "source_repetition": int(raw_rule["source_repetition"]),
+            "target_block_id": str(raw_rule["target_block_id"]),
+            "target_configuration_id": str(
+                raw_rule["target_configuration_id"]
+            ),
+            "target_repetition": int(raw_rule["target_repetition"]),
+        }
+        if rule["source_repetition"] <= 0 or rule["target_repetition"] <= 0:
+            raise ValueError("reuse result repetitions must be positive")
+        target = (
+            rule["target_block_id"],
+            rule["target_configuration_id"],
+            rule["target_repetition"],
+        )
+        if target not in target_cells:
+            raise ValueError(
+                "reuse_results references an unknown target cell: "
+                f"{target!r}"
+            )
+        if target in seen_reuse_targets:
+            raise ValueError(
+                f"multiple reuse_results entries target the same cell: {target!r}"
+            )
+        seen_reuse_targets.add(target)
+        normalized_reuse_results.append(rule)
+
+    reuse_policy = str(config.get("reuse_policy", "strict"))
+    if reuse_policy not in {"strict", "validated_common_gcp"}:
+        raise ValueError(
+            "reuse_policy must be 'strict' or 'validated_common_gcp'"
+        )
     payload = {
         "schema_version": SCHEMA_VERSION,
         "campaign_id": config["campaign_name"],
@@ -454,11 +647,58 @@ def build_plan(
             config.get("controller_grace_seconds", 120.0)
         ),
         "required_machine": dict(config.get("required_machine", {})),
+        "reuse_policy": reuse_policy,
         "job_count": len(jobs),
         "jobs": jobs,
     }
+    if normalized_reuse_results:
+        payload["reuse_results"] = normalized_reuse_results
+    # Per-instance reuse supports partially completed source campaigns.  The
+    # preparation tool binds every source row to one immutable target run key.
+    reuse_cells = config.get("reuse_cells", {})
+    if reuse_cells:
+        if normalized_reuse_results or not isinstance(reuse_cells, dict):
+            raise ValueError("reuse_cells must be a mapping without reuse_results")
+        job_keys = {job["run_key"] for job in jobs}
+        if set(reuse_cells) - job_keys:
+            raise ValueError("reuse_cells contains unplanned target run keys")
+        required_fields = {
+            "source_campaign_id", "source_block_id", "source_configuration_id",
+            "source_repetition", "source_run_key", "source_row_sha256",
+        }
+        for rule in reuse_cells.values():
+            if not isinstance(rule, dict) or required_fields - rule.keys():
+                raise ValueError("reuse_cells contains an incomplete source mapping")
+            if int(rule["source_repetition"]) <= 0:
+                raise ValueError("reuse_cells source repetitions must be positive")
+            if not re.fullmatch(r"[0-9a-f]{64}", str(rule["source_row_sha256"])):
+                raise ValueError("reuse_cells contains an invalid source-row SHA-256")
+        payload["reuse_cells"] = reuse_cells
+    if config.get("frozen_sources"):
+        payload["frozen_sources"] = config["frozen_sources"]
     payload["plan_sha256"] = sha256_text(canonical_json(payload))
     return payload
+
+
+def execution_shard_assignments(
+    plan: dict[str, Any],
+    shard_count: int,
+) -> dict[str, int]:
+    """Assign all configurations of one content to the same balanced shard."""
+
+    if shard_count <= 0:
+        raise ValueError("shard_count must be positive")
+    content_ids = sorted(
+        {str(job["instance_content_id"]) for job in plan["jobs"]}
+    )
+    content_shards = {
+        content_id: rank % shard_count
+        for rank, content_id in enumerate(content_ids)
+    }
+    return {
+        job["run_key"]: content_shards[str(job["instance_content_id"])]
+        for job in plan["jobs"]
+    }
 
 
 def _git_metadata() -> tuple[str, bool]:
@@ -488,6 +728,8 @@ def build_environment(
     *,
     uwrmaxsat_binary: Path | None,
     command: list[str],
+    execution_shard_count: int = 1,
+    execution_shard_indices: tuple[int, ...] = (0,),
 ) -> dict[str, Any]:
     commit, dirty = _git_metadata()
     manifest_hashes = {}
@@ -521,6 +763,9 @@ def build_environment(
             if uwrmaxsat_binary is not None
             else ""
         ),
+        "execution_shard_count": execution_shard_count,
+        "execution_shard_indices": list(execution_shard_indices),
+        "execution_shard_policy": EXECUTION_SHARD_POLICY,
         "runner_command": shlex.join(command),
     }
     environment.update(current_machine_profile())
@@ -608,6 +853,14 @@ def _configuration_command(
             configuration["solver"],
             "--objective-mode",
             configuration["objective_mode"],
+            "--compact-encoding",
+            configuration.get("compact_encoding", "reference"),
+            "--collision-amo",
+            configuration.get("collision_amo", "pairwise"),
+            "--participant-idle-cap-rule",
+            configuration.get("participant_idle_cap_rule", "none"),
+            "--participant-idle-cap-alpha",
+            str(configuration.get("participant_idle_cap_alpha", "1/2")),
             "--domain-mode",
             configuration["domain_mode"],
             "--domain-filter-graph",
@@ -676,7 +929,7 @@ def _configuration_command(
                 ]
             )
         return command, detailed
-    if executor == "org_ir":
+    if executor in {"org_ir", "org_idle", "direct_idle"}:
         if uwrmaxsat_binary is None:
             raise FileNotFoundError("UWrMaxSAT is required by ORG IR")
         command = [
@@ -696,6 +949,17 @@ def _configuration_command(
             "--excel-dir",
             str(temp_dir / "excel"),
         ]
+        if executor in {"org_idle", "direct_idle"}:
+            command.extend(
+                [
+                    "--objective-mode",
+                    configuration["objective_mode"],
+                    "--participant-idle-cap-rule",
+                    configuration.get("participant_idle_cap_rule", "none"),
+                    "--participant-idle-cap-alpha",
+                    str(configuration.get("participant_idle_cap_alpha", "1/2")),
+                ]
+            )
         return command, detailed
     raise AssertionError(executor)
 
@@ -816,9 +1080,33 @@ def run_job(
                 ),
             }
     after = _machine_snapshot()
+    row.setdefault(
+        "compact_encoding",
+        job["configuration"].get("compact_encoding", "reference"),
+    )
+    row.setdefault(
+        "collision_amo",
+        job["configuration"].get("collision_amo", "pairwise"),
+    )
+    row.setdefault(
+        "participant_idle_cap_rule",
+        job["configuration"].get("participant_idle_cap_rule", "none"),
+    )
+    row.setdefault(
+        "participant_idle_cap_alpha",
+        str(job["configuration"].get("participant_idle_cap_alpha", "1/2")),
+    )
     row.update(
         {
             "campaign_id": campaign_id,
+            "executor_instance_content_id": row.get("instance_content_id", ""),
+            "instance_content_id": job["instance_content_id"],
+            "instance_sha256": job["instance_sha256"],
+            "instance_path": job["instance_path"],
+            "instance_variant": job["instance_variant"],
+            "instance_family": job["instance_family"],
+            "base_lineage_id": job["base_lineage_id"],
+            "result_origin": "executed",
             "experiment_block": job["experiment_block"],
             "planned_configuration_id": job["planned_configuration_id"],
             "repetition": job["repetition"],
@@ -860,6 +1148,391 @@ def materialize_results(output_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _configuration_without_id(configuration: dict[str, Any]) -> dict[str, Any]:
+    comparable = dict(configuration)
+    comparable.pop("id", None)
+    return comparable
+
+
+def _validate_reuse_source(
+    source_output: Path,
+    *,
+    allow_dirty: bool,
+    allow_environment_drift: bool,
+) -> None:
+    command = [
+        sys.executable,
+        str(PROJECT_ROOT / "src" / "Validate_Journal_Run.py"),
+        "--output",
+        str(source_output),
+        "--allow-incomplete",
+    ]
+    if allow_dirty:
+        command.append("--allow-dirty")
+    if allow_environment_drift:
+        command.append("--allow-environment-drift")
+    completed = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stdout + completed.stderr).strip()
+        raise ValueError(
+            f"reuse source failed validation: {source_output}: {detail}"
+        )
+
+
+def _reuse_environment_mismatches(
+    target: dict[str, Any],
+    source: dict[str, Any],
+) -> list[str]:
+    exact_fields = (
+        "git_commit",
+        "git_dirty",
+        "requirements_sha256",
+        "manifest_sha256",
+        "uwrmaxsat_sha256",
+        "required_machine",
+        "python_version",
+        "kernel_release",
+        "cpu_model",
+        "physical_cpu_cores",
+        "logical_cpu_cores",
+    )
+    return [
+        field for field in exact_fields if source.get(field) != target.get(field)
+    ]
+
+
+def _reuse_result_errors(row: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if row.get("status") not in TERMINAL_STATUSES:
+        errors.append("result is not terminal")
+    if str(row.get("campaign_executor_returncode", "")).strip() not in {"", "0"}:
+        errors.append("executor return code is nonzero")
+    for field in ("error_type", "error_message", "validation_errors"):
+        if str(row.get(field, "")).strip():
+            errors.append(f"{field} is nonempty")
+    return errors
+
+
+def _copy_reused_log(
+    source_output: Path,
+    target_output: Path,
+    source_campaign_id: str,
+    source_log: str,
+) -> str:
+    if not source_log:
+        return ""
+    relative = Path(source_log)
+    candidates: list[Path] = []
+    direct = source_output / relative
+    if direct.is_file():
+        candidates.append(direct)
+    if not candidates:
+        candidates.extend(
+            path
+            for path in (source_output / "logs").glob(
+                f"**/{relative.name}"
+            )
+            if path.is_file()
+        )
+    if len(candidates) != 1:
+        return ""
+    safe_campaign = re.sub(r"[^A-Za-z0-9_.-]+", "_", source_campaign_id)
+    destination = (
+        target_output / "logs" / "reused" / safe_campaign / relative.name
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.exists():
+        shutil.copy2(candidates[0], destination)
+    return destination.relative_to(target_output).as_posix()
+
+
+def import_reused_results(
+    output_dir: Path,
+    plan: dict[str, Any],
+    environment: dict[str, Any],
+    source_outputs: Iterable[Path],
+    *,
+    execution_shard_count: int,
+    execution_shard_indices: tuple[int, ...],
+    allow_dirty: bool = False,
+    allow_environment_drift: bool = False,
+) -> dict[str, Any]:
+    """Import planned result cells from compatible completed campaigns."""
+
+    rules = list(plan.get("reuse_results", []))
+    reuse_policy = str(plan.get("reuse_policy", "strict"))
+    assume_common_gcp = reuse_policy == "validated_common_gcp"
+    accept_source_dirty = allow_dirty or assume_common_gcp
+    accept_environment_differences = allow_environment_drift or assume_common_gcp
+    resolved_sources = [path.resolve() for path in source_outputs]
+    if not rules:
+        if resolved_sources:
+            raise ValueError("--reuse-output was provided but the plan has no rules")
+        return {"imported": 0, "already_completed": 0, "sources": []}
+    if not resolved_sources:
+        raise ValueError(
+            "this campaign requires --reuse-output for its planned reused results"
+        )
+
+    sources: dict[str, dict[str, Any]] = {}
+    for source_output in resolved_sources:
+        _validate_reuse_source(
+            source_output,
+            allow_dirty=accept_source_dirty,
+            allow_environment_drift=accept_environment_differences,
+        )
+        source_plan = json.loads(
+            (source_output / "plan.json").read_text(encoding="utf-8")
+        )
+        source_environment = json.loads(
+            (source_output / "environment.json").read_text(encoding="utf-8")
+        )
+        campaign_id = str(source_plan.get("campaign_id", ""))
+        if not campaign_id:
+            raise ValueError(f"reuse source has no campaign id: {source_output}")
+        if campaign_id in sources:
+            raise ValueError(
+                f"multiple reuse outputs provide campaign {campaign_id!r}"
+            )
+        mismatches = _reuse_environment_mismatches(
+            environment, source_environment
+        )
+        if mismatches and not accept_environment_differences:
+            raise ValueError(
+                f"reuse source {campaign_id!r} has incompatible environment "
+                "fields: " + ", ".join(mismatches)
+            )
+        if float(source_plan.get("timeout_seconds", -1)) != float(
+            plan.get("timeout_seconds", -2)
+        ):
+            raise ValueError(
+                f"reuse source {campaign_id!r} has a different timeout"
+            )
+        source_records = latest_attempts(
+            _read_jsonl(source_output / "raw" / "results.jsonl")
+        )
+        source_jobs = {
+            (
+                str(job["experiment_block"]),
+                str(job["planned_configuration_id"]),
+                int(job["repetition"]),
+                str(job["instance_content_id"]),
+            ): job
+            for job in source_plan.get("jobs", [])
+        }
+        sources[campaign_id] = {
+            "output": source_output,
+            "plan": source_plan,
+            "environment": source_environment,
+            "accepted_environment_mismatches": (
+                mismatches if accept_environment_differences else []
+            ),
+            "records": source_records,
+            "jobs": source_jobs,
+        }
+
+    missing_campaigns = sorted(
+        {str(rule["source_campaign_id"]) for rule in rules} - set(sources)
+    )
+    if missing_campaigns:
+        raise ValueError(
+            "no --reuse-output provides required campaigns: "
+            + ", ".join(missing_campaigns)
+        )
+
+    target_assignments = execution_shard_assignments(
+        plan, execution_shard_count
+    )
+    target_rules = {
+        (
+            str(rule["target_block_id"]),
+            str(rule["target_configuration_id"]),
+            int(rule["target_repetition"]),
+        ): rule
+        for rule in rules
+    }
+    target_raw_path = output_dir / "raw" / "results.jsonl"
+    target_records = _read_jsonl(target_raw_path)
+    target_latest = latest_attempts(target_records)
+    imported = 0
+    already_completed = 0
+    source_reports: dict[str, dict[str, Any]] = {
+        campaign_id: {
+            "campaign_id": campaign_id,
+            "plan_sha256": source["plan"]["plan_sha256"],
+            "imported": 0,
+            "already_completed": 0,
+            "accepted_environment_mismatches": source[
+                "accepted_environment_mismatches"
+            ],
+        }
+        for campaign_id, source in sources.items()
+    }
+
+    for target_job in plan["jobs"]:
+        rule = target_rules.get(
+            (
+                str(target_job["experiment_block"]),
+                str(target_job["planned_configuration_id"]),
+                int(target_job["repetition"]),
+            )
+        )
+        if rule is None:
+            continue
+        if (
+            target_assignments[target_job["run_key"]]
+            not in execution_shard_indices
+        ):
+            continue
+        existing = target_latest.get(target_job["run_key"])
+        if existing is not None and existing.get("row", {}).get(
+            "status"
+        ) in TERMINAL_STATUSES:
+            already_completed += 1
+            source_reports[str(rule["source_campaign_id"])][
+                "already_completed"
+            ] += 1
+            continue
+
+        source_campaign_id = str(rule["source_campaign_id"])
+        source = sources.get(source_campaign_id)
+        if source is None:
+            raise ValueError(
+                f"no --reuse-output provides campaign {source_campaign_id!r}"
+            )
+        source_key = (
+            str(rule["source_block_id"]),
+            str(rule["source_configuration_id"]),
+            int(rule["source_repetition"]),
+            str(target_job["instance_content_id"]),
+        )
+        source_job = source["jobs"].get(source_key)
+        if source_job is None:
+            raise ValueError(
+                "reuse source plan is missing the required cell: "
+                f"{source_key!r}"
+            )
+        if canonical_json(
+            _configuration_without_id(source_job["configuration"])
+        ) != canonical_json(
+            _configuration_without_id(target_job["configuration"])
+        ):
+            raise ValueError(
+                "reuse source and target configurations differ beyond their IDs: "
+                f"{source_job['planned_configuration_id']!r} -> "
+                f"{target_job['planned_configuration_id']!r}"
+            )
+        source_record = source["records"].get(source_job["run_key"])
+        if source_record is None:
+            raise ValueError(
+                f"reuse source has no result for {source_job['run_key']!r}"
+            )
+        source_row = source_record.get("row", {})
+        result_errors = _reuse_result_errors(source_row)
+        if result_errors:
+            raise ValueError(
+                f"reuse source result is invalid for {source_job['run_key']!r}: "
+                + "; ".join(result_errors)
+            )
+
+        row = dict(source_row)
+        source_log = str(row.get("campaign_log", ""))
+        row.update(
+            {
+                "campaign_id": plan["campaign_id"],
+                "experiment_block": target_job["experiment_block"],
+                "planned_configuration_id": target_job[
+                    "planned_configuration_id"
+                ],
+                "repetition": target_job["repetition"],
+                "run_order": target_job["run_order"],
+                "run_key": target_job["run_key"],
+                "attempt": (
+                    int(existing["attempt"]) + 1 if existing is not None else 1
+                ),
+                "run_order_seed": plan["run_order_seed"],
+                "campaign_plan_sha256": plan["plan_sha256"],
+                "execution_shard_count": execution_shard_count,
+                "execution_shard_indices": ",".join(
+                    str(index) for index in execution_shard_indices
+                ),
+                "execution_shard_index": target_assignments[
+                    target_job["run_key"]
+                ],
+                "execution_shard_policy": EXECUTION_SHARD_POLICY,
+                "result_origin": "reused",
+                "reused_from_campaign_id": source_campaign_id,
+                "reused_from_plan_sha256": source["plan"]["plan_sha256"],
+                "reused_from_run_key": source_job["run_key"],
+                "reused_from_experiment_block": source_job[
+                    "experiment_block"
+                ],
+                "reused_from_configuration_id": source_job[
+                    "planned_configuration_id"
+                ],
+                "reused_from_repetition": source_job["repetition"],
+                "reused_from_run_order": source_job["run_order"],
+                "reused_from_run_order_seed": source["plan"][
+                    "run_order_seed"
+                ],
+                "reused_from_execution_shard_index": source_row.get(
+                    "execution_shard_index", ""
+                ),
+                "reused_from_campaign_log": source_log,
+                "reused_source_record_sha256": sha256_text(
+                    canonical_json(source_record)
+                ),
+            }
+        )
+        row["campaign_log"] = _copy_reused_log(
+            source["output"],
+            output_dir,
+            source_campaign_id,
+            source_log,
+        )
+        record = {
+            "run_key": target_job["run_key"],
+            "attempt": row["attempt"],
+            "completed_utc": source_record.get("completed_utc", utc_now()),
+            "row": row,
+        }
+        _append_jsonl(target_raw_path, record)
+        target_latest[target_job["run_key"]] = record
+        imported += 1
+        source_reports[source_campaign_id]["imported"] += 1
+
+    expected_selected = sum(
+        (
+            str(job["experiment_block"]),
+            str(job["planned_configuration_id"]),
+            int(job["repetition"]),
+        )
+        in target_rules
+        and target_assignments[job["run_key"]] in execution_shard_indices
+        for job in plan["jobs"]
+    )
+    if imported + already_completed != expected_selected:
+        raise ValueError(
+            "reuse import did not cover every planned target result: "
+            f"covered={imported + already_completed}, "
+            f"expected={expected_selected}"
+        )
+    return {
+        "reuse_policy": reuse_policy,
+        "common_gcp_environment_assumed": assume_common_gcp,
+        "imported": imported,
+        "already_completed": already_completed,
+        "expected_selected": expected_selected,
+        "sources": sorted(source_reports.values(), key=lambda item: item["campaign_id"]),
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run deterministic, append-only journal experiment campaigns."
@@ -875,11 +1548,63 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--retry-errors", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--allow-environment-drift",
+        action="store_true",
+        help=(
+            "resume after a VM/solver change; keep completed rows and record "
+            "the accepted environment differences"
+        ),
+    )
+    parser.add_argument(
+        "--reuse-output",
+        action="append",
+        default=[],
+        help=(
+            "validated earlier campaign output supplying result cells declared "
+            "by reuse_results; repeat for multiple source campaigns"
+        ),
+    )
     parser.add_argument("--max-runs", type=int)
     parser.add_argument("--only-block", action="append", default=[])
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        help=(
+            "number of deterministic execution shards; the full plan and its "
+            "SHA-256 remain unchanged"
+        ),
+    )
+    parser.add_argument(
+        "--shard-index",
+        type=int,
+        action="append",
+        default=[],
+        help=(
+            "zero-based shard assigned to this output; repeat this option to "
+            "give one VM several shards"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.max_runs is not None and args.max_runs <= 0:
         parser.error("--max-runs must be positive")
+    if (args.shard_count is None) != (not args.shard_index):
+        parser.error(
+            "--shard-count and at least one --shard-index are required together"
+        )
+    if args.shard_count is not None:
+        if args.shard_count <= 0:
+            parser.error("--shard-count must be positive")
+        if len(set(args.shard_index)) != len(args.shard_index):
+            parser.error("--shard-index values must be distinct")
+        if any(
+            index < 0 or index >= args.shard_count
+            for index in args.shard_index
+        ):
+            parser.error(
+                "every --shard-index must satisfy 0 <= index < shard count"
+            )
+        args.shard_index.sort()
     return args
 
 
@@ -888,12 +1613,15 @@ def main(argv: list[str] | None = None) -> int:
     config_path = Path(args.config).resolve()
     output_dir = Path(args.output_dir).resolve()
     config = read_config(config_path)
+    shard_count = args.shard_count or 1
+    shard_indices = tuple(args.shard_index or [0])
     datasets = resolve_datasets(config)
     plan = build_plan(
         config,
         datasets,
         only_blocks=set(args.only_block) or None,
     )
+    shard_assignments = execution_shard_assignments(plan, shard_count)
     existing_plan_path = output_dir / "plan.json"
     if existing_plan_path.is_file():
         with existing_plan_path.open(encoding="utf-8") as stream:
@@ -910,6 +1638,14 @@ def main(argv: list[str] | None = None) -> int:
         f"campaign={plan['campaign_id']} jobs={plan['job_count']} "
         f"plan_sha256={plan['plan_sha256']}"
     )
+    selected_job_count = sum(
+        shard_assignments[job["run_key"]] in shard_indices
+        for job in plan["jobs"]
+    )
+    print(
+        f"execution_shards={list(shard_indices)}/{shard_count} "
+        f"selected_jobs={selected_job_count} policy={EXECUTION_SHARD_POLICY}"
+    )
     if args.plan_only:
         return 0
 
@@ -921,7 +1657,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     profile_errors = machine_profile_errors(plan.get("required_machine"))
-    if profile_errors:
+    if profile_errors and not args.allow_environment_drift:
         profile_id = plan.get("required_machine", {}).get("profile_id", "production")
         raise SystemExit(
             f"ERROR: machine does not match {profile_id!r}: "
@@ -930,7 +1666,8 @@ def main(argv: list[str] | None = None) -> int:
 
     needs_uwr = any(
         (
-            job["configuration"]["executor"] == "org_ir"
+            job["configuration"]["executor"]
+            in {"org_ir", "org_idle", "direct_idle"}
             or (
                 job["configuration"]["executor"] == "org_bg_d2"
                 and job["configuration"].get("backend", "uwrmaxsat")
@@ -967,14 +1704,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     environment_path = output_dir / "environment.json"
+    current_profile = current_machine_profile()
+    requirements_path = PROJECT_ROOT / "src" / "requirements.txt"
+    current_requirements_sha256 = (
+        file_sha256(requirements_path) if requirements_path.is_file() else ""
+    )
     if environment_path.is_file():
         with environment_path.open(encoding="utf-8") as stream:
             environment = json.load(stream)
         resume_mismatches = []
+        accepted_resume_mismatches = []
         if environment.get("plan_sha256") != plan["plan_sha256"]:
             resume_mismatches.append("plan SHA-256")
         if environment.get("git_commit") != commit:
-            resume_mismatches.append("git commit")
+            accepted_resume_mismatches.append("git commit")
         if environment.get("config_sha256") != file_sha256(config_path):
             resume_mismatches.append("config SHA-256")
         current_manifest_hashes = {
@@ -985,12 +1728,68 @@ def main(argv: list[str] | None = None) -> int:
         if environment.get("manifest_sha256") != current_manifest_hashes:
             resume_mismatches.append("dataset manifest SHA-256")
         if str(environment.get("uwrmaxsat_sha256", "")) != binary_sha256:
-            resume_mismatches.append("UWrMaxSAT SHA-256")
+            accepted_resume_mismatches.append("UWrMaxSAT SHA-256")
+        current_environment_fields = {
+            "requirements SHA-256": current_requirements_sha256,
+            "Python version": platform.python_version(),
+            "kernel release": platform.release(),
+            "CPU model": current_profile.get("cpu_model"),
+            "physical CPU cores": current_profile.get("physical_cpu_cores"),
+            "logical CPU cores": current_profile.get("logical_cpu_cores"),
+            "system memory": current_profile.get("system_memory_mb"),
+        }
+        recorded_environment_fields = {
+            "requirements SHA-256": environment.get("requirements_sha256"),
+            "Python version": environment.get("python_version"),
+            "kernel release": environment.get("kernel_release"),
+            "CPU model": environment.get("cpu_model"),
+            "physical CPU cores": environment.get("physical_cpu_cores"),
+            "logical CPU cores": environment.get("logical_cpu_cores"),
+            "system memory": environment.get("system_memory_mb"),
+        }
+        accepted_resume_mismatches.extend(
+            label
+            for label, current_value in current_environment_fields.items()
+            if recorded_environment_fields[label] != current_value
+        )
+        if int(environment.get("execution_shard_count", 1)) != shard_count:
+            resume_mismatches.append("execution shard count")
+        if tuple(environment.get("execution_shard_indices", [0])) != shard_indices:
+            resume_mismatches.append("execution shard indices")
+        if environment.get(
+            "execution_shard_policy", EXECUTION_SHARD_POLICY
+        ) != EXECUTION_SHARD_POLICY:
+            resume_mismatches.append("execution shard policy")
         if resume_mismatches:
             raise SystemExit(
                 "ERROR: refusing to mix environments while resuming: "
                 + ", ".join(resume_mismatches)
             )
+        if accepted_resume_mismatches and not args.allow_environment_drift:
+            raise SystemExit(
+                "ERROR: refusing to mix environments while resuming: "
+                + ", ".join(accepted_resume_mismatches)
+                + "; pass --allow-environment-drift to retain completed jobs "
+                "and record the VM transition"
+            )
+        if args.allow_environment_drift:
+            environment.setdefault("resume_environment_history", []).append(
+                {
+                    "resumed_utc": utc_now(),
+                    "git_commit": commit,
+                    "git_dirty": dirty,
+                    "python_executable": sys.executable,
+                    "python_version": platform.python_version(),
+                    "kernel_release": platform.release(),
+                    "uwrmaxsat_binary": str(binary or ""),
+                    "uwrmaxsat_sha256": binary_sha256,
+                    "accepted_mismatches": accepted_resume_mismatches,
+                    "accepted_machine_profile_errors": profile_errors,
+                    **current_profile,
+                }
+            )
+            environment["environment_drift_accepted"] = True
+            _write_json(environment_path, environment)
     else:
         environment = build_environment(
             config_path,
@@ -998,10 +1797,39 @@ def main(argv: list[str] | None = None) -> int:
             plan,
             uwrmaxsat_binary=binary,
             command=[sys.executable, str(Path(__file__).resolve()), *(argv or sys.argv[1:])],
+            execution_shard_count=shard_count,
+            execution_shard_indices=shard_indices,
         )
         environment["git_commit"] = commit
         environment["git_dirty"] = dirty
+        if args.allow_environment_drift and profile_errors:
+            environment["environment_drift_accepted"] = True
+            environment["accepted_machine_profile_errors"] = profile_errors
         _write_json(environment_path, environment)
+
+    try:
+        reuse_report = import_reused_results(
+            output_dir,
+            plan,
+            environment,
+            [Path(value) for value in args.reuse_output],
+            execution_shard_count=shard_count,
+            execution_shard_indices=shard_indices,
+            allow_dirty=args.allow_dirty,
+            allow_environment_drift=args.allow_environment_drift,
+        )
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"ERROR: unable to reuse planned results: {exc}") from exc
+    if plan.get("reuse_results"):
+        environment["result_reuse"] = reuse_report
+        _write_json(environment_path, environment)
+        print(
+            "reuse_state "
+            f"imported={reuse_report['imported']} "
+            f"already_completed={reuse_report['already_completed']} "
+            f"expected_selected={reuse_report['expected_selected']}",
+            flush=True,
+        )
 
     raw_path = output_dir / "raw" / "results.jsonl"
     records = _read_jsonl(raw_path)
@@ -1019,11 +1847,16 @@ def main(argv: list[str] | None = None) -> int:
         if record is not None and not args.retry_errors:
             continue
         pending.append(job)
+    pending = [
+        job
+        for job in pending
+        if shard_assignments[job["run_key"]] in shard_indices
+    ]
     if args.max_runs is not None:
         pending = pending[: args.max_runs]
     print(
         f"resume_state completed={len(completed)} pending_selected={len(pending)} "
-        f"raw_attempts={len(records)}"
+        f"raw_attempts={len(records)} shards={list(shard_indices)}/{shard_count}"
     )
 
     timeout = float(plan["timeout_seconds"])
@@ -1085,6 +1918,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("campaign interrupted safely; rerun with --resume", flush=True)
             return 130
+        record["row"]["execution_shard_count"] = shard_count
+        record["row"]["execution_shard_indices"] = ",".join(
+            str(index) for index in shard_indices
+        )
+        record["row"]["execution_shard_index"] = (
+            shard_assignments[job["run_key"]]
+        )
+        record["row"]["execution_shard_policy"] = EXECUTION_SHARD_POLICY
         _append_jsonl(raw_path, record)
         latest[job["run_key"]] = record
         status = record["row"].get("status")

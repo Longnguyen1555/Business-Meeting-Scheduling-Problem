@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-cross-generation-evaluation-smoke-v1",
+  "description": "Two-instance, one-repetition smoke test for the 3-encoding x 3-objective matrix.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 30,
+  "run_order_seed": 20261022,
+  "require_clean_worktree": false,
+  "expected_job_count": 18,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "original",
+      "max_instances": 2
+    }
+  ],
+  "blocks_from": "cross_generation_evaluation_blocks.json",
+  "block_repetitions": {
+    "cross_generation_three_by_three": 1
+  }
+}

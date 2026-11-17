@@ -16,14 +16,372 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from Journal_Experiment import (
     build_plan,
+    execution_shard_assignments,
     machine_profile_errors,
     read_config,
     resolve_datasets,
 )
+from Merge_Journal_Shards import merge_shards
+from Recover_Journal_Results import recover_results
+from Select_Final_Tier_Experiment import build_final_tier_config
 from Validate_Journal_Run import validate_campaign
 
 
 class JournalExperimentTests(unittest.TestCase):
+    def test_balanced_objective_campaigns_and_final_tier_selection(self) -> None:
+        expected = {
+            "compact_objectives.json": 1890,
+            "compact_objectives_smoke.json": 30,
+            "idle_cap_sensitivity.json": 378,
+            "idle_cap_sensitivity_smoke.json": 6,
+            "main_objectives.json": 2268,
+            "main_objectives_smoke.json": 12,
+            "conference_reference.json": 1134,
+            "conference_reference_smoke.json": 6,
+            "conference_historical_reuse.json": 252,
+            "conference_ir_reruns.json": 452,
+            "objective_aware_evaluation.json": 4914,
+            "objective_aware_evaluation_smoke.json": 26,
+            "cross_generation_evaluation.json": 3402,
+            "cross_generation_evaluation_smoke.json": 18,
+        }
+        plans = {}
+        for name, count in expected.items():
+            config = read_config(PROJECT_ROOT / "journal_configs" / name)
+            plan = build_plan(config, resolve_datasets(config))
+            self.assertEqual(plan["job_count"], count)
+            plans[name] = (config, plan)
+
+        main_config, main_plan = plans["main_objectives.json"]
+        self.assertEqual(len(main_plan["reuse_results"]), 3)
+        reused_target_cells = {
+            (
+                rule["target_block_id"],
+                rule["target_configuration_id"],
+                rule["target_repetition"],
+            )
+            for rule in main_plan["reuse_results"]
+        }
+        reused_main_jobs = sum(
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            )
+            in reused_target_cells
+            for job in main_plan["jobs"]
+        )
+        self.assertEqual(reused_main_jobs, 378)
+        self.assertEqual(main_plan["job_count"] - reused_main_jobs, 1890)
+
+        _, conference_plan = plans["conference_reference.json"]
+        self.assertEqual(len(conference_plan["reuse_results"]), 6)
+        reused_conference_cells = {
+            (
+                rule["target_block_id"],
+                rule["target_configuration_id"],
+                rule["target_repetition"],
+            )
+            for rule in conference_plan["reuse_results"]
+        }
+        reused_conference_jobs = sum(
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            )
+            in reused_conference_cells
+            for job in conference_plan["jobs"]
+        )
+        self.assertEqual(reused_conference_jobs, 756)
+        self.assertEqual(conference_plan["job_count"] - reused_conference_jobs, 378)
+        compact_plan = plans["compact_objectives.json"][1]
+        historical_plan = plans["conference_historical_reuse.json"][1]
+        conference_ir_rerun_plan = plans["conference_ir_reruns.json"][1]
+        source_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for source_plan in (
+                compact_plan,
+                historical_plan,
+                conference_ir_rerun_plan,
+            )
+            for job in source_plan["jobs"]
+        }
+        conference_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for job in conference_plan["jobs"]
+        }
+        for rule in conference_plan["reuse_results"]:
+            source = source_cells[
+                (
+                    rule["source_block_id"],
+                    rule["source_configuration_id"],
+                    rule["source_repetition"],
+                )
+            ]
+            target = conference_cells[
+                (
+                    rule["target_block_id"],
+                    rule["target_configuration_id"],
+                    rule["target_repetition"],
+                )
+            ]
+            self.assertEqual(
+                {key: value for key, value in source.items() if key != "id"},
+                {key: value for key, value in target.items() if key != "id"},
+            )
+        conference_configs = {
+            job["planned_configuration_id"]: job["configuration"]
+            for job in conference_plan["jobs"]
+        }
+        self.assertEqual(
+            set(conference_configs),
+            {
+                "conference_bg_d2_adapted",
+                "conference_ir",
+                "conference_ir_im_is_adapted",
+            },
+        )
+        for configuration in conference_configs.values():
+            self.assertEqual(configuration["compact_encoding"], "reference")
+            self.assertEqual(configuration["collision_amo"], "pairwise")
+            self.assertEqual(configuration["domain_mode"], "reduced")
+            self.assertEqual(
+                configuration["domain_filter_graph"], "distance_closure"
+            )
+            self.assertEqual(configuration["precedence_encoding"], "sparse_suffix")
+            self.assertEqual(configuration["precedence_graph"], "distance_closure")
+        main_ir_im_is_caps = {
+            job["planned_configuration_id"]: job["configuration"].get(
+                "participant_idle_cap_rule", "none"
+            )
+            for job in main_plan["jobs"]
+            if job["configuration"].get("objective_mode") == "ir_im_is"
+        }
+        self.assertEqual(
+            main_ir_im_is_caps,
+            {
+                "published_2022_ir_im_is": "none",
+                "compact_cdf_ir_im_is": "none",
+            },
+        )
+        compact_ir_im_is_caps = {
+            job["planned_configuration_id"]: job["configuration"].get(
+                "participant_idle_cap_rule", "none"
+            )
+            for job in plans["compact_objectives.json"][1]["jobs"]
+            if job["configuration"].get("objective_mode") == "ir_im_is"
+        }
+        self.assertEqual(set(compact_ir_im_is_caps.values()), {"none"})
+        deferred_cap_cells = {
+            (
+                job["configuration"].get("participant_idle_cap_rule"),
+                job["configuration"].get("participant_idle_cap_alpha"),
+            )
+            for job in plans["idle_cap_sensitivity.json"][1]["jobs"]
+        }
+        self.assertEqual(
+            deferred_cap_cells,
+            {
+                ("interpolated_bounds", "1/2"),
+                ("interpolated_bounds", "3/4"),
+                ("interpolated_bounds", "1"),
+            },
+        )
+        rows = [
+            {
+                "objective_mode": "ir_im_is",
+                "planned_configuration_id": "published_2022_ir_im_is",
+                "status": "OPTIMAL",
+                "runtime_seconds": "1",
+                "peak_memory_mb": "50",
+            },
+            {
+                "objective_mode": "ir_im_is",
+                "planned_configuration_id": "compact_cdf_ir_im_is",
+                "status": "OPTIMAL",
+                "runtime_seconds": "10",
+                "peak_memory_mb": "120",
+            },
+        ]
+        final_config, report = build_final_tier_config(
+            main_config, main_plan, rows
+        )
+        self.assertEqual(
+            report["baseline_configuration_id"],
+            "compact_cdf_ir_im_is",
+        )
+        self.assertEqual(
+            report["selection_basis"],
+            "prespecified_compact_configuration",
+        )
+        self.assertEqual(
+            report["ranking"][0]["configuration_id"],
+            "published_2022_ir_im_is",
+        )
+        self.assertEqual(final_config["expected_job_count"], 378)
+        final_cells = final_config["blocks"][0]["configurations"]
+        self.assertEqual(
+            {cell["objective_mode"] for cell in final_cells},
+            {"ir_im_isq"},
+        )
+        self.assertTrue(
+            final_config["selection_provenance"]["baseline_results_reused"]
+        )
+        self.assertTrue(
+            all(
+                cell.get("participant_idle_cap_rule", "none") == "none"
+                for cell in final_cells
+            )
+        )
+        final_plan = build_plan(
+            final_config, resolve_datasets(final_config)
+        )
+        self.assertEqual(final_plan["job_count"], 378)
+
+        objective_aware_plan = plans["objective_aware_evaluation.json"][1]
+        configurations = {
+            job["planned_configuration_id"]: job["configuration"]
+            for job in objective_aware_plan["jobs"]
+        }
+        self.assertEqual(len(configurations), 13)
+        for objective in ("is", "isq", "im_is", "ir_is"):
+            self.assertEqual(
+                {
+                    configurations[f"direct_{objective}"]["executor"],
+                    configurations[f"base_compact_{objective}"]["executor"],
+                    configurations[f"objective_aware_{objective}"]["executor"],
+                },
+                {"direct_idle", "main"},
+            )
+            self.assertEqual(
+                configurations[f"objective_aware_{objective}"][
+                    "compact_encoding"
+                ],
+                "objective_aware",
+            )
+        self.assertEqual(
+            configurations["break_groups_without_homogeneity"][
+                "objective_mode"
+            ],
+            "bg_dinf",
+        )
+
+        cross_config, cross_plan = plans["cross_generation_evaluation.json"]
+        cross_configurations = {
+            job["planned_configuration_id"]: job["configuration"]
+            for job in cross_plan["jobs"]
+        }
+        self.assertEqual(len(cross_configurations), 9)
+        self.assertEqual(len(cross_plan["reuse_results"]), 23)
+        self.assertEqual(cross_plan["reuse_policy"], "validated_common_gcp")
+        reused_cells = {
+            (
+                rule["target_block_id"],
+                rule["target_configuration_id"],
+                rule["target_repetition"],
+            )
+            for rule in cross_plan["reuse_results"]
+        }
+        reusable_jobs = sum(
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            )
+            in reused_cells
+            for job in cross_plan["jobs"]
+        )
+        self.assertEqual(reusable_jobs, 2898)
+        self.assertEqual(cross_plan["job_count"] - reusable_jobs, 504)
+        cross_source_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for source_plan in (main_plan, compact_plan, conference_ir_rerun_plan)
+            for job in source_plan["jobs"]
+        }
+        cross_target_cells = {
+            (
+                job["experiment_block"],
+                job["planned_configuration_id"],
+                job["repetition"],
+            ): job["configuration"]
+            for job in cross_plan["jobs"]
+        }
+        for rule in cross_plan["reuse_results"]:
+            source = cross_source_cells[
+                (
+                    rule["source_block_id"],
+                    rule["source_configuration_id"],
+                    rule["source_repetition"],
+                )
+            ]
+            target = cross_target_cells[
+                (
+                    rule["target_block_id"],
+                    rule["target_configuration_id"],
+                    rule["target_repetition"],
+                )
+            ]
+            self.assertEqual(
+                {key: value for key, value in source.items() if key != "id"},
+                {key: value for key, value in target.items() if key != "id"},
+            )
+        self.assertEqual(
+            cross_configurations["compact_objective_bg_d2"]["compact_encoding"],
+            "optimized",
+        )
+        for objective in ("ir", "ir_im_is"):
+            self.assertEqual(
+                cross_configurations[f"compact_objective_{objective}"][
+                    "compact_encoding"
+                ],
+                "optimized",
+            )
+        self.assertEqual(cross_config["timeout_seconds"], 7200)
+        self.assertEqual(
+            cross_config["uwrmaxsat_sha256"],
+            "82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202",
+        )
+
+    def test_all126_content_shards_are_balanced_and_pair_preserving(self) -> None:
+        config = read_config(
+            PROJECT_ROOT / "journal_configs" / "all126_first.json"
+        )
+        plan = build_plan(config, resolve_datasets(config))
+        assignments = execution_shard_assignments(plan, 4)
+        counts = {shard: 0 for shard in range(4)}
+        contents: dict[str, set[int]] = {}
+        configurations: dict[tuple[int, str], int] = {}
+        for job in plan["jobs"]:
+            shard = assignments[job["run_key"]]
+            counts[shard] += 1
+            contents.setdefault(job["instance_content_id"], set()).add(shard)
+            key = (shard, job["planned_configuration_id"])
+            configurations[key] = configurations.get(key, 0) + 1
+        self.assertEqual(counts, {0: 416, 1: 416, 2: 403, 3: 403})
+        self.assertTrue(all(len(shards) == 1 for shards in contents.values()))
+        for shard, expected in ((0, 32), (1, 32), (2, 31), (3, 31)):
+            self.assertEqual(
+                {
+                    count
+                    for (observed_shard, _), count in configurations.items()
+                    if observed_shard == shard
+                },
+                {expected},
+            )
+
     def test_frozen_machine_profile_comparison(self) -> None:
         required = {
             "cpu_model_contains": "Xeon(R) Platinum 8581C",
@@ -158,6 +516,380 @@ class JournalExperimentTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             errors, report = validate_campaign(
                 output,
+                allow_dirty=True,
+            )
+            self.assertEqual(errors, [])
+            self.assertTrue(report["valid"])
+
+            # A materialized CSV can restore a lost raw record without solving
+            # the completed run again, while marking the reconstructed record.
+            (output / "raw" / "results.jsonl").write_text("", encoding="utf-8")
+            recovery = recover_results(output, allow_dirty=True)
+            self.assertEqual(recovery["recovered_records"], 1)
+            recovered = json.loads(
+                (output / "raw" / "results.jsonl").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                recovered["raw_record_origin"],
+                "recovered_from_normalized_csv",
+            )
+            errors, report = validate_campaign(output, allow_dirty=True)
+            self.assertEqual(errors, [])
+            self.assertTrue(report["valid"])
+
+            environment_path = output / "environment.json"
+            environment = json.loads(
+                environment_path.read_text(encoding="utf-8")
+            )
+            environment["git_commit"] = "replacement-vm-started-from-old-sha"
+            environment_path.write_text(
+                json.dumps(environment), encoding="utf-8"
+            )
+            rejected_drift = subprocess.run(
+                [*base_command, "--resume"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertNotEqual(rejected_drift.returncode, 0)
+            self.assertIn("--allow-environment-drift", rejected_drift.stderr)
+            accepted_drift = subprocess.run(
+                [*base_command, "--resume", "--allow-environment-drift"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(
+                accepted_drift.returncode,
+                0,
+                accepted_drift.stdout + accepted_drift.stderr,
+            )
+            self.assertIn("pending_selected=0", accepted_drift.stdout)
+            resumed_environment = json.loads(
+                environment_path.read_text(encoding="utf-8")
+            )
+            self.assertTrue(resumed_environment["environment_drift_accepted"])
+            self.assertEqual(
+                resumed_environment["resume_environment_history"][-1][
+                    "accepted_mismatches"
+                ],
+                ["git commit"],
+            )
+
+    def test_two_disjoint_shards_merge_into_one_valid_campaign(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="journal_shards_") as temporary:
+            root = Path(temporary)
+            config_path = root / "config.json"
+            config = {
+                "schema_version": 1,
+                "campaign_name": "unit-two-shards",
+                "timeout_seconds": 30,
+                "controller_grace_seconds": 5,
+                "run_order_seed": 11,
+                "require_clean_worktree": False,
+                "datasets": [
+                    {
+                        "id": "two",
+                        "manifest": str(PROJECT_ROOT / "instances_manifest.csv"),
+                        "family": "original",
+                        "instance_names": [
+                            "forum-13.original",
+                            "tic-12.original",
+                        ],
+                    }
+                ],
+                "blocks": [
+                    {
+                        "id": "one_block",
+                        "datasets": ["two"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {
+                                "id": "org_bg_rc2",
+                                "executor": "org_bg_d2",
+                                "objective_mode": "bg_d2",
+                                "backend": "rc2",
+                            }
+                        ],
+                    }
+                ],
+            }
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            shard_outputs = [root / "shard-0", root / "shard-1"]
+            for shard_index, output in enumerate(shard_outputs):
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(PROJECT_ROOT / "src" / "Journal_Experiment.py"),
+                        "--config",
+                        str(config_path),
+                        "--output-dir",
+                        str(output),
+                        "--allow-dirty",
+                        "--shard-count",
+                        "2",
+                        "--shard-index",
+                        str(shard_index),
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    completed.returncode, 0, completed.stdout + completed.stderr
+                )
+            merged = root / "merged"
+            changed_environment_path = shard_outputs[1] / "environment.json"
+            changed_environment = json.loads(
+                changed_environment_path.read_text(encoding="utf-8")
+            )
+            changed_environment["python_version"] = "different-vm-python"
+            changed_environment_path.write_text(
+                json.dumps(changed_environment), encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "python_version"):
+                merge_shards(
+                    shard_outputs,
+                    merged,
+                    allow_dirty=True,
+                )
+            report = merge_shards(
+                shard_outputs,
+                merged,
+                allow_dirty=True,
+                allow_mixed_environments=True,
+            )
+            self.assertTrue(report["valid"])
+            self.assertEqual(report["latest_attempts"], 2)
+            strict_errors, _ = validate_campaign(
+                merged,
+                allow_dirty=True,
+            )
+            self.assertTrue(
+                any("accepted environment drift" in error for error in strict_errors)
+            )
+            errors, _ = validate_campaign(
+                merged,
+                allow_dirty=True,
+                allow_environment_drift=True,
+            )
+            self.assertEqual(errors, [])
+
+    def test_reuses_equivalent_result_without_executing_target_cell(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="journal_reuse_") as temporary:
+            root = Path(temporary)
+            source_config_path = root / "source.json"
+            target_config_path = root / "target.json"
+            common_configuration = {
+                "executor": "org_bg_d2",
+                "objective_mode": "bg_d2",
+                "backend": "rc2",
+            }
+            common = {
+                "schema_version": 1,
+                "timeout_seconds": 30,
+                "controller_grace_seconds": 5,
+                "run_order_seed": 19,
+                "require_clean_worktree": False,
+                "datasets": [
+                    {
+                        "id": "one",
+                        "manifest": str(PROJECT_ROOT / "instances_manifest.csv"),
+                        "family": "original",
+                        "instance_names": [
+                            "forum-13.original",
+                            "tic-12.original",
+                        ],
+                    }
+                ],
+            }
+            source_config = {
+                **common,
+                "campaign_name": "unit-reuse-source",
+                "blocks": [
+                    {
+                        "id": "source-block",
+                        "datasets": ["one"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {**common_configuration, "id": "source-model"}
+                        ],
+                    }
+                ],
+            }
+            target_config = {
+                **common,
+                "campaign_name": "unit-reuse-target",
+                "reuse_policy": "validated_common_gcp",
+                "reuse_results": [
+                    {
+                        "source_campaign_id": "unit-reuse-source",
+                        "source_block_id": "source-block",
+                        "source_configuration_id": "source-model",
+                        "source_repetition": 1,
+                        "target_block_id": "target-block",
+                        "target_configuration_id": "target-model",
+                        "target_repetition": 1,
+                    }
+                ],
+                "blocks": [
+                    {
+                        "id": "target-block",
+                        "datasets": ["one"],
+                        "repetitions": 1,
+                        "configurations": [
+                            {**common_configuration, "id": "target-model"}
+                        ],
+                    }
+                ],
+            }
+            source_config_path.write_text(
+                json.dumps(source_config), encoding="utf-8"
+            )
+            target_config_path.write_text(
+                json.dumps(target_config), encoding="utf-8"
+            )
+            runner = PROJECT_ROOT / "src" / "Journal_Experiment.py"
+            source_outputs = [root / f"source-shard-{index}" for index in range(2)]
+            target_outputs = [root / f"target-shard-{index}" for index in range(2)]
+            for shard_index, (source_output, target_output) in enumerate(
+                zip(source_outputs, target_outputs)
+            ):
+                shard_args = [
+                    "--shard-count",
+                    "2",
+                    "--shard-index",
+                    str(shard_index),
+                ]
+                source_run = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(source_config_path),
+                        "--output-dir",
+                        str(source_output),
+                        "--allow-dirty",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    source_run.returncode,
+                    0,
+                    source_run.stdout + source_run.stderr,
+                )
+                source_environment_path = source_output / "environment.json"
+                source_environment = json.loads(
+                    source_environment_path.read_text(encoding="utf-8")
+                )
+                source_environment["python_version"] = "accepted-common-gcp-version"
+                source_environment_path.write_text(
+                    json.dumps(source_environment), encoding="utf-8"
+                )
+                target_run = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(target_config_path),
+                        "--output-dir",
+                        str(target_output),
+                        "--reuse-output",
+                        str(source_output),
+                        "--allow-dirty",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    target_run.returncode,
+                    0,
+                    target_run.stdout + target_run.stderr,
+                )
+                self.assertIn("imported=1", target_run.stdout)
+                self.assertIn("pending_selected=0", target_run.stdout)
+                target_resume = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--config",
+                        str(target_config_path),
+                        "--output-dir",
+                        str(target_output),
+                        "--reuse-output",
+                        str(source_output),
+                        "--allow-dirty",
+                        "--resume",
+                        *shard_args,
+                    ],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                self.assertEqual(
+                    target_resume.returncode,
+                    0,
+                    target_resume.stdout + target_resume.stderr,
+                )
+                self.assertIn("already_completed=1", target_resume.stdout)
+                self.assertIn("pending_selected=0", target_resume.stdout)
+                records = [
+                    json.loads(line)
+                    for line in (
+                        target_output / "raw" / "results.jsonl"
+                    ).read_text(encoding="utf-8").splitlines()
+                ]
+                self.assertEqual(len(records), 1)
+                row = records[0]["row"]
+                self.assertEqual(row["result_origin"], "reused")
+                environment = json.loads(
+                    (target_output / "environment.json").read_text(encoding="utf-8")
+                )
+                self.assertTrue(
+                    environment["result_reuse"]["common_gcp_environment_assumed"]
+                )
+                self.assertEqual(
+                    row["reused_from_configuration_id"], "source-model"
+                )
+                self.assertEqual(
+                    row["planned_configuration_id"], "target-model"
+                )
+                errors, report = validate_campaign(
+                    target_output,
+                    allow_dirty=True,
+                    allow_incomplete=True,
+                )
+                self.assertEqual(errors, [])
+                self.assertTrue(report["valid"])
+
+            merged = root / "target-merged"
+            merge_report = merge_shards(
+                target_outputs,
+                merged,
+                allow_dirty=True,
+            )
+            self.assertEqual(merge_report["latest_attempts"], 2)
+            errors, report = validate_campaign(
+                merged,
                 allow_dirty=True,
             )
             self.assertEqual(errors, [])

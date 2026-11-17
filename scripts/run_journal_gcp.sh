@@ -5,6 +5,59 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_DIR"
 
+# Planning is read-only with respect to solver state and needs no GCP pins.
+if [[ "${1:-}" == "all126-first-plan" ]]; then
+  plan_env_file=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
+  if [[ -f "$plan_env_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$plan_env_file"
+  fi
+  plan_python=${PLAN_PYTHON:-python3}
+  if [[ -z "${PLAN_PYTHON:-}" && -x "${JOURNAL_VENV:-.venv-ubuntu}/bin/python" ]]; then
+    plan_python="${JOURNAL_VENV:-.venv-ubuntu}/bin/python"
+  fi
+  plan_shard_args=()
+  if [[ -n "${SHARD_COUNT:-}" || -n "${SHARD_INDICES:-}" ]]; then
+    if [[ ! "${SHARD_COUNT:-}" =~ ^[1-9][0-9]*$ || -z "${SHARD_INDICES:-}" ]]; then
+      echo "ERROR: set SHARD_COUNT and comma-separated SHARD_INDICES together" >&2
+      exit 2
+    fi
+    plan_shard_args+=(--shard-count "$SHARD_COUNT")
+    IFS=',' read -r -a plan_shard_indices <<< "$SHARD_INDICES"
+    for plan_shard_index in "${plan_shard_indices[@]}"; do
+      plan_shard_args+=(--shard-index "$plan_shard_index")
+    done
+  fi
+  exec "$plan_python" src/Journal_Experiment.py \
+    --config journal_configs/all126_first.json \
+    --output-dir "${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/all126-first" \
+    --plan-only \
+    "${plan_shard_args[@]}"
+fi
+
+# Merging completed shards is a local, solver-free operation.
+if [[ "${1:-}" == "merge-shards" ]]; then
+  shift
+  merge_python=${PLAN_PYTHON:-python3}
+  exec "$merge_python" src/Merge_Journal_Shards.py "$@"
+fi
+
+# Historical reuse preparation is solver-free and verifies every archived row
+# against the checked-in current reference results before writing an archive.
+if [[ "${1:-}" == "prepare-conference-reuse" ]]; then
+  prepare_python=${PLAN_PYTHON:-python3}
+  exec "$prepare_python" src/Prepare_Conference_Reuse.py \
+    --output "${CONFERENCE_HISTORICAL_REUSE_OUTPUT:-${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/conference-historical-reuse}"
+fi
+
+# The two checked-in Conference IR reruns are converted into a validated,
+# solver-free campaign archive before they are imported by larger campaigns.
+if [[ "${1:-}" == "prepare-conference-ir-reruns" ]]; then
+  prepare_python=${PLAN_PYTHON:-python3}
+  exec "$prepare_python" src/Prepare_Conference_IR_Reruns.py \
+    --output "${CONFERENCE_IR_RERUNS_OUTPUT:-${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}/conference-ir-reruns}"
+fi
+
 ENV_FILE=${JOURNAL_ENV_FILE:-$PROJECT_DIR/journal_gcp.env}
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: copy journal_gcp.env.example to $ENV_FILE and fill the pins" >&2
@@ -16,7 +69,37 @@ source "$ENV_FILE"
 JOURNAL_VENV=${JOURNAL_VENV:-.venv-ubuntu}
 OUTPUT_ROOT=${OUTPUT_ROOT:-$PROJECT_DIR/outputs/journal}
 ALLOW_DIRTY=${ALLOW_DIRTY:-0}
+ALLOW_ENVIRONMENT_DRIFT=${ALLOW_ENVIRONMENT_DRIFT:-0}
 RETRY_ERRORS=${RETRY_ERRORS:-0}
+SHARD_COUNT=${SHARD_COUNT:-}
+SHARD_INDICES=${SHARD_INDICES:-}
+
+if [[ -n "$SHARD_COUNT" || -n "$SHARD_INDICES" ]]; then
+  if [[ ! "$SHARD_COUNT" =~ ^[1-9][0-9]*$ || -z "$SHARD_INDICES" ]]; then
+    echo "ERROR: set SHARD_COUNT and comma-separated SHARD_INDICES together" >&2
+    exit 2
+  fi
+fi
+
+shard_args=()
+shard_label=""
+if [[ -n "$SHARD_COUNT" ]]; then
+  shard_args+=(--shard-count "$SHARD_COUNT")
+  IFS=',' read -r -a shard_index_values <<< "$SHARD_INDICES"
+  for shard_index in "${shard_index_values[@]}"; do
+    if [[ ! "$shard_index" =~ ^[0-9]+$ || "$shard_index" -ge "$SHARD_COUNT" ]]; then
+      echo "ERROR: invalid shard index $shard_index for SHARD_COUNT=$SHARD_COUNT" >&2
+      exit 2
+    fi
+    shard_args+=(--shard-index "$shard_index")
+  done
+  shard_suffix=${SHARD_INDICES//,/-}
+  if [[ "$SHARD_INDICES" == *,* ]]; then
+    shard_label="shards-$shard_suffix-of-$SHARD_COUNT"
+  else
+    shard_label="shard-$shard_suffix-of-$SHARD_COUNT"
+  fi
+fi
 
 if [[ ! -x "$JOURNAL_VENV/bin/python" ]]; then
   echo "ERROR: missing Python environment $JOURNAL_VENV" >&2
@@ -71,6 +154,9 @@ runner_common=(
 if [[ "$ALLOW_DIRTY" == "1" ]]; then
   runner_common+=(--allow-dirty)
 fi
+if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+  runner_common+=(--allow-environment-drift)
+fi
 if [[ "$RETRY_ERRORS" == "1" ]]; then
   runner_common+=(--retry-errors)
 fi
@@ -88,6 +174,30 @@ run_campaign() {
   local validator_status=0
   "${RUNNER[@]}" \
     --config "journal_configs/$config_name.json" \
+    --output-dir "$output_dir" \
+    "${runner_common[@]}" \
+    "${resume_args[@]}" \
+    "$@" || runner_status=$?
+  validate_existing "$output_dir" || validator_status=$?
+  if [[ "$runner_status" -ne 0 ]]; then
+    return "$runner_status"
+  fi
+  return "$validator_status"
+}
+
+run_campaign_config_path() {
+  local config_path=$1
+  local output_name=$2
+  shift 2
+  local output_dir="$OUTPUT_ROOT/$output_name"
+  local resume_args=()
+  if [[ -f "$output_dir/plan.json" ]]; then
+    resume_args+=(--resume)
+  fi
+  local runner_status=0
+  local validator_status=0
+  "${RUNNER[@]}" \
+    --config "$config_path" \
     --output-dir "$output_dir" \
     "${runner_common[@]}" \
     "${resume_args[@]}" \
@@ -169,12 +279,18 @@ audit_coverage() {
 
 validate_existing() {
   local output_dir=$1
-  local dirty_args=()
+  local validation_args=()
   if [[ "$ALLOW_DIRTY" == "1" ]]; then
-    dirty_args+=(--allow-dirty)
+    validation_args+=(--allow-dirty)
+  fi
+  if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+    validation_args+=(--allow-environment-drift)
+  fi
+  if [[ -n "$SHARD_COUNT" ]]; then
+    validation_args+=(--allow-incomplete)
   fi
   "$PYTHON" src/Validate_Journal_Run.py \
-    --output "$output_dir" "${dirty_args[@]}"
+    --output "$output_dir" "${validation_args[@]}"
 }
 
 run_warmup() {
@@ -209,6 +325,42 @@ case "$command" in
   smoke)
     run_campaign production_smoke production-smoke
     ;;
+  compact-smoke)
+    run_campaign compact_smoke compact-smoke
+    ;;
+  compact-f-smoke)
+    run_campaign compact_f_smoke compact-f-smoke
+    ;;
+  compact-objectives-smoke)
+    run_campaign compact_objectives_smoke compact-objectives-smoke
+    ;;
+  cap-sensitivity-smoke)
+    run_campaign idle_cap_sensitivity_smoke idle-cap-sensitivity-smoke
+    ;;
+  main-objectives-smoke)
+    run_campaign main_objectives_smoke main-objectives-smoke
+    ;;
+  conference-reference-smoke)
+    run_campaign conference_reference_smoke conference-reference-smoke
+    ;;
+  bg-dinf-quality-smoke)
+    run_campaign bg_dinf_quality_smoke bg-dinf-quality-smoke
+    ;;
+  all126-first-smoke)
+    smoke_output=all126-first-smoke
+    if [[ -n "$shard_label" ]]; then
+      smoke_output="$smoke_output/$shard_label"
+    fi
+    run_campaign all126_first_smoke "$smoke_output" "${shard_args[@]}"
+    ;;
+  all126-first)
+    run_warmup
+    first_output=all126-first
+    if [[ -n "$shard_label" ]]; then
+      first_output="$first_output/$shard_label"
+    fi
+    run_campaign all126_first "$first_output" "${shard_args[@]}"
+    ;;
   pilot)
     require_generated_data
     run_warmup
@@ -221,6 +373,159 @@ case "$command" in
   precedence)
     run_warmup
     run_campaign precedence_ablation precedence-ablation
+    ;;
+  compact)
+    run_warmup
+    run_campaign compact_ablation compact-ablation
+    ;;
+  compact-f)
+    run_warmup
+    run_campaign compact_f_ablation compact-f-ablation
+    ;;
+  compact-objectives)
+    run_warmup
+    compact_objectives_output=compact-objectives
+    if [[ -n "$shard_label" ]]; then
+      compact_objectives_output="$compact_objectives_output/$shard_label"
+    fi
+    run_campaign compact_objectives "$compact_objectives_output" "${shard_args[@]}"
+    ;;
+  cap-sensitivity)
+    run_warmup
+    cap_sensitivity_output=idle-cap-sensitivity
+    if [[ -n "$shard_label" ]]; then
+      cap_sensitivity_output="$cap_sensitivity_output/$shard_label"
+    fi
+    run_campaign idle_cap_sensitivity "$cap_sensitivity_output" "${shard_args[@]}"
+    ;;
+  main-objectives)
+    run_warmup
+    main_objectives_output=main-objectives
+    compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-}
+    if [[ -n "$shard_label" ]]; then
+      main_objectives_output="$main_objectives_output/$shard_label"
+      if [[ -z "$compact_reuse_output" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives/$shard_label"
+      fi
+    elif [[ -z "$compact_reuse_output" ]]; then
+      if [[ -d "$OUTPUT_ROOT/compact-objectives-merged" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives-merged"
+      else
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives"
+      fi
+    fi
+    if [[ ! -f "$compact_reuse_output/plan.json" ]]; then
+      echo "ERROR: main-objectives reuses compact-objectives repetition 1" >&2
+      echo "ERROR: missing reuse source $compact_reuse_output" >&2
+      echo "ERROR: run compact-objectives first or set COMPACT_OBJECTIVES_OUTPUT" >&2
+      exit 2
+    fi
+    run_campaign main_objectives "$main_objectives_output" \
+      --reuse-output "$compact_reuse_output" \
+      "${shard_args[@]}"
+    ;;
+  conference-reference)
+    if [[ "$ALLOW_DIRTY" != "1" || "$ALLOW_ENVIRONMENT_DRIFT" != "1" ]]; then
+      echo "ERROR: conference-reference reuses approved mixed-environment and historical repetitions" >&2
+      echo "ERROR: set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record that approval" >&2
+      exit 2
+    fi
+    run_warmup
+    conference_reference_output=conference-reference
+    compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-}
+    historical_reuse_output=${CONFERENCE_HISTORICAL_REUSE_OUTPUT:-$OUTPUT_ROOT/conference-historical-reuse}
+    conference_ir_reruns_output=${CONFERENCE_IR_RERUNS_OUTPUT:-$OUTPUT_ROOT/conference-ir-reruns}
+    if [[ -n "$shard_label" ]]; then
+      conference_reference_output="$conference_reference_output/$shard_label"
+      if [[ -z "$compact_reuse_output" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives/$shard_label"
+      fi
+    elif [[ -z "$compact_reuse_output" ]]; then
+      if [[ -d "$OUTPUT_ROOT/compact-objectives-merged" ]]; then
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives-merged"
+      else
+        compact_reuse_output="$OUTPUT_ROOT/compact-objectives"
+      fi
+    fi
+    if [[ ! -f "$compact_reuse_output/plan.json" ]]; then
+      echo "ERROR: conference-reference reuses compact-objectives repetition 1" >&2
+      echo "ERROR: missing reuse source $compact_reuse_output" >&2
+      echo "ERROR: merge compact-objectives or set COMPACT_OBJECTIVES_OUTPUT" >&2
+      exit 2
+    fi
+    if [[ ! -f "$historical_reuse_output/plan.json" ]]; then
+      "$PYTHON" src/Prepare_Conference_Reuse.py \
+        --output "$historical_reuse_output"
+    fi
+    if [[ ! -f "$conference_ir_reruns_output/plan.json" ]]; then
+      "$PYTHON" src/Prepare_Conference_IR_Reruns.py \
+        --output "$conference_ir_reruns_output"
+    fi
+    run_campaign conference_reference "$conference_reference_output" \
+      --reuse-output "$compact_reuse_output" \
+      --reuse-output "$historical_reuse_output" \
+      --reuse-output "$conference_ir_reruns_output" \
+      "${shard_args[@]}"
+    ;;
+  cross-generation)
+    if [[ "$ALLOW_DIRTY" != "1" || "$ALLOW_ENVIRONMENT_DRIFT" != "1" ]]; then
+      echo "ERROR: cross-generation reuses validated common-GCP results" >&2
+      echo "ERROR: set ALLOW_DIRTY=1 and ALLOW_ENVIRONMENT_DRIFT=1 to record that approval" >&2
+      exit 2
+    fi
+    run_warmup
+    main_reuse_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives-merged}
+    compact_reuse_output=${COMPACT_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/compact-objectives-merged}
+    conference_ir_reruns_output=${CONFERENCE_IR_RERUNS_OUTPUT:-$OUTPUT_ROOT/conference-ir-reruns}
+    for reuse_output in "$main_reuse_output" "$compact_reuse_output"; do
+      if [[ ! -f "$reuse_output/plan.json" ]]; then
+        echo "ERROR: missing cross-generation reuse source $reuse_output" >&2
+        exit 2
+      fi
+    done
+    if [[ ! -f "$conference_ir_reruns_output/plan.json" ]]; then
+      "$PYTHON" src/Prepare_Conference_IR_Reruns.py \
+        --output "$conference_ir_reruns_output"
+    fi
+    cross_generation_output=cross-generation-evaluation
+    if [[ -n "$shard_label" ]]; then
+      cross_generation_output="$cross_generation_output/$shard_label"
+    fi
+    run_campaign cross_generation_evaluation "$cross_generation_output" \
+      --reuse-output "$main_reuse_output" \
+      --reuse-output "$compact_reuse_output" \
+      --reuse-output "$conference_ir_reruns_output" \
+      "${shard_args[@]}"
+    ;;
+  bg-dinf-quality)
+    run_warmup
+    bg_dinf_output=bg-dinf-quality
+    if [[ -n "$shard_label" ]]; then
+      bg_dinf_output="$bg_dinf_output/$shard_label"
+    fi
+    run_campaign bg_dinf_quality "$bg_dinf_output" "${shard_args[@]}"
+    ;;
+  final-tier)
+    main_output=${MAIN_OBJECTIVES_OUTPUT:-$OUTPUT_ROOT/main-objectives}
+    final_config="$OUTPUT_ROOT/final-tier-compact.json"
+    selector_args=()
+    if [[ "$ALLOW_DIRTY" == "1" ]]; then
+      selector_args+=(--allow-dirty)
+    fi
+    if [[ "$ALLOW_ENVIRONMENT_DRIFT" == "1" ]]; then
+      selector_args+=(--allow-environment-drift)
+    fi
+    "$PYTHON" src/Select_Final_Tier_Experiment.py \
+      --main-output "$main_output" \
+      --main-config journal_configs/main_objectives.json \
+      --output-config "$final_config" \
+      "${selector_args[@]}"
+    run_warmup
+    final_tier_output=final-tier-compact
+    if [[ -n "$shard_label" ]]; then
+      final_tier_output="$final_tier_output/$shard_label"
+    fi
+    run_campaign_config_path "$final_config" "$final_tier_output" "${shard_args[@]}"
     ;;
   generated-development)
     require_generated_data
@@ -244,6 +549,15 @@ case "$command" in
     plan_campaign pilot stratified-pilot
     plan_campaign official_core official-core
     plan_campaign precedence_ablation precedence-ablation
+    plan_campaign compact_smoke compact-smoke
+    plan_campaign compact_ablation compact-ablation
+    plan_campaign compact_f_smoke compact-f-smoke
+    plan_campaign compact_f_ablation compact-f-ablation
+    plan_campaign compact_objectives compact-objectives
+    plan_campaign main_objectives main-objectives
+    plan_campaign conference_reference conference-reference
+    plan_campaign cross_generation_evaluation cross-generation-evaluation
+    plan_campaign bg_dinf_quality bg-dinf-quality
     plan_campaign generated_core generated-development \
       --only-block e5_generated_development
     plan_campaign generated_core generated-heldout \
@@ -277,18 +591,51 @@ Commands:
   coverage               extract features and audit marginal/joint coverage
   correctness             local RC2/CaDiCaL 12-content gate
   smoke                   pinned production solver 12-content gate
+  compact-smoke           pinned A-D compact gate (168 runs)
+  compact-f-smoke         pinned optimized-vs-F gate (72 runs)
+  compact-objectives-smoke  two-input A/C/D/F x objective gate (30 runs)
+  cap-sensitivity-smoke   deferred optional two-input cap-alpha gate (6 runs)
+  main-objectives-smoke   two-input 2-model x 3-objective gate (12 runs)
+  conference-reference-smoke  two-input conference-backbone x 3-objective gate (6 runs)
+  bg-dinf-quality-smoke   two-input Compact BG-d-infinity gate (2 runs)
+  all126-first-plan       freeze/check 1,638 jobs; no GCP env or solver needed
+  all126-first-smoke      all 13 configurations on 12 inputs (156 development runs)
+  all126-first            T1-T3 All-126, repetition 1 only (1,638 runs)
+  merge-shards ARGS       merge complete disjoint VM outputs and validate them
   pilot                   7,200-second development-only stratified pilot
   official                E1-E3 All-126 (8,820 runs)
   precedence              E4 2x2x2 ablation (3,360 runs)
+  compact                 paired A-D All-126 ablation (5,292 runs)
+  compact-f               paired F All-126 ablation (2,268 runs)
+  compact-objectives      A/C/D/F x BG-d2/IR/uncapped IR-IM-IS (1,890 runs)
+  cap-sensitivity         deferred optional compact cap-alpha study (378 runs)
+  main-objectives         2 models x 3 objectives x 3 reps (378 reused; 1,890 new)
+  prepare-conference-reuse audit/build the 252-row BG-d2/IR historical archive
+  prepare-conference-ir-reruns audit/build the 452-row two-run Conference IR archive
+  conference-reference    conference backbone x 3 objectives x 3 reps (756 reused; 378 new)
+  cross-generation        3 encodings x 3 objectives x 3 reps (2,898 reused; 504 new)
+  bg-dinf-quality         Compact BG-d-infinity x All-126 x 1 rep (126 runs)
+  final-tier              run Compact C+D+F IR-IM-ISQ only (378 runs)
   generated-development   E5 Development-240 only
   generated-heldout       E5 Held-out-60; requires HELDOUT_FROZEN=YES
-  plan                    create and report all deterministic plans
+  plan                    create and report active uncapped deterministic plans
   all-development         features, coverage, correctness, smoke and pilot
   validate DIR            strictly validate one completed campaign
 
 Every campaign is single-worker, append-only and resumable. Re-run the same
 command after interruption; the script adds --resume automatically.
+Set SHARD_COUNT=N and SHARD_INDICES=i[,j...] to divide one unchanged plan
+between VMs. Shard indices are zero-based.
+main-objectives requires the matching compact-objectives output and reuses its
+three selected repetition-1 cells. Set COMPACT_OBJECTIVES_OUTPUT only when the
+source is outside the default matching shard/output directory.
+conference-reference reuses the three reference repetition-1 cells, the
+audited historical BG-d2 repetition-2 cell, and both new Conference IR runs.
+It builds both reuse archives if needed. Set ALLOW_DIRTY=1 and
+ALLOW_ENVIRONMENT_DRIFT=1 to record the approved source provenance.
 Set RETRY_ERRORS=1 only to create a new attempt for existing ERROR rows.
+Set ALLOW_ENVIRONMENT_DRIFT=1 only when deliberately resuming an unchanged
+plan after a VM, Git commit, Python/kernel, or pinned solver-binary change.
 EOF
     ;;
   *)

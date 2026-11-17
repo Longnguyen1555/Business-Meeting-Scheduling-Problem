@@ -1,5 +1,0 @@
-original: Main 120/120 rows; ORG 20/20 rows; source paths 20
-forbidden: Main 156/396 rows; ORG 26/66 rows; source paths 40
-fixed: Main 240/240 rows; ORG 40/40 rows; source paths 40
-precedence: Main 960/960 rows; ORG 40/40 rows; source paths 40
-validated: 1476 computed Main rows, 126 computed ORG rows, covering 140 official paths

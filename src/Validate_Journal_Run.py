@@ -3,14 +3,18 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 from Journal_Experiment import (
+    EXECUTION_SHARD_POLICY,
     TERMINAL_STATUSES,
     canonical_json,
+    execution_shard_assignments,
     latest_attempts,
     machine_profile_errors,
     sha256_text,
@@ -56,18 +60,105 @@ def _objective_vector(row: dict[str, Any]) -> tuple[int, ...] | None:
     return tuple(int(value.strip()) for value in str(raw).split(",") if value.strip())
 
 
+def waiting_metric_errors(row: dict[str, Any]) -> list[str]:
+    """Check the new objective vector against the recorded participant costs."""
+    try:
+        raw = row["participant_internal_idle_slots"]
+        values = [
+            int(value)
+            for value in (
+                raw if isinstance(raw, (tuple, list)) else str(raw).split(",")
+            )
+        ]
+        if not values or any(v < 0 for v in values):
+            return ["missing or invalid participant idle costs"]
+        total, maximum, squared = sum(values), max(values), sum(v * v for v in values)
+        objective_mode = row["objective_mode"]
+        if objective_mode in {"ir_im_is", "ir_im_isq"}:
+            participants_raw = row["objective_participants"]
+            participants = [
+                int(value)
+                for value in (
+                    participants_raw
+                    if isinstance(participants_raw, (tuple, list))
+                    else str(participants_raw).split(",")
+                )
+                if str(value).strip()
+            ]
+            if any(participant < 1 or participant > len(values) for participant in participants):
+                return ["invalid objective participant IDs"]
+            pstar_values = [values[participant - 1] for participant in participants]
+            idle_range = (
+                max(pstar_values) - min(pstar_values)
+                if len(pstar_values) >= 2
+                else 0
+            )
+            maximum = max(pstar_values, default=0)
+            expected = (
+                (idle_range, maximum, squared)
+                if objective_mode == "ir_im_isq"
+                else (idle_range, maximum, total)
+            )
+        else:
+            expected = {
+                "is": (total,),
+                "isq": (squared,),
+                "im_is": (maximum, total),
+            }[objective_mode]
+        errors = []
+        for field, value in (("total_internal_idle_slots", total),
+                             ("maximum_internal_idle_slots", maximum),
+                             ("squared_internal_idle_slots", squared)):
+            if int(row[field]) != value:
+                errors.append(f"{field} disagrees with participant costs")
+        if objective_mode in {"ir_im_is", "ir_im_isq"} and int(row["idle_range_pstar"]) != idle_range:
+            errors.append("idle_range_pstar disagrees with objective-participant costs")
+        if row.get("participant_idle_cap_rule", "none") == "interpolated_bounds":
+            raw_caps = row["participant_idle_caps"]
+            caps = [
+                int(value)
+                for value in (
+                    raw_caps
+                    if isinstance(raw_caps, (tuple, list))
+                    else str(raw_caps).split(",")
+                )
+            ]
+            if len(caps) != len(values):
+                errors.append("participant idle cap vector has wrong length")
+            elif any(value > cap for value, cap in zip(values, caps)):
+                errors.append("participant idle cap is violated")
+        if _objective_vector(row) != expected:
+            errors.append("waiting objective vector disagrees with participant costs")
+        proven = _objective_vector({"objective_vector": row.get("proven_objective_vector")})
+        if proven != expected:
+            errors.append("proven waiting objective vector is missing or inconsistent")
+        weights_raw = row["objective_tier_weights"]
+        weights = [int(v) for v in (weights_raw if isinstance(weights_raw, (list, tuple))
+                                   else str(weights_raw).split(","))]
+        if len(weights) != len(expected) or any(v <= 0 for v in weights):
+            errors.append("invalid objective tier weights")
+        elif int(row["lexicographic_scalar_cost"]) != sum(w * v for w, v in zip(weights, expected)):
+            errors.append("weighted solver cost disagrees with waiting objective")
+        return errors
+    except (ValueError, KeyError, TypeError):
+        return ["missing or malformed waiting metrics/cost certificate"]
+
+
 def validate_campaign(
     output_dir: Path,
     *,
     allow_dirty: bool = False,
     allow_incomplete: bool = False,
     allow_errors: bool = False,
+    allow_environment_drift: bool = False,
 ) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
     try:
         plan = _read_json(output_dir / "plan.json")
     except FileNotFoundError:
         return ["missing plan.json"], {}
+    common_gcp_assumed = plan.get("reuse_policy") == "validated_common_gcp"
+    allow_environment_drift = allow_environment_drift or common_gcp_assumed
     try:
         environment = _read_json(output_dir / "environment.json")
     except FileNotFoundError:
@@ -80,6 +171,14 @@ def validate_campaign(
         return [f"invalid results.jsonl: {exc}"], {}
 
     jobs = {job["run_key"]: job for job in plan.get("jobs", [])}
+    reuse_target_rules = {
+        (
+            str(rule["target_block_id"]),
+            str(rule["target_configuration_id"]),
+            int(rule["target_repetition"]),
+        ): rule
+        for rule in plan.get("reuse_results", [])
+    }
     unhashed_plan = dict(plan)
     recorded_plan_sha256 = unhashed_plan.pop("plan_sha256", "")
     recomputed_plan_sha256 = sha256_text(canonical_json(unhashed_plan))
@@ -118,25 +217,46 @@ def validate_campaign(
             errors.append("environment/plan SHA-256 mismatch")
         if environment.get("git_dirty") and not allow_dirty:
             errors.append("production provenance records git_dirty=true")
+        if (
+            environment.get("environment_drift_accepted")
+            and not allow_environment_drift
+        ):
+            errors.append(
+                "campaign contains accepted environment drift; rerun validation "
+                "with --allow-environment-drift"
+            )
         if environment.get("required_machine", {}) != plan.get(
             "required_machine", {}
         ):
             errors.append("environment/plan required-machine profile mismatch")
-        for mismatch in machine_profile_errors(
-            plan.get("required_machine"), environment
-        ):
-            errors.append(f"production machine profile mismatch: {mismatch}")
+        if not allow_environment_drift:
+            for mismatch in machine_profile_errors(
+                plan.get("required_machine"), environment
+            ):
+                errors.append(
+                    f"production machine profile mismatch: {mismatch}"
+                )
     expected_uwr_hash = str(environment.get("uwrmaxsat_sha256", ""))
+    execution_shard_count = int(environment.get("execution_shard_count", 1))
+    execution_shard_indices = tuple(
+        int(value)
+        for value in environment.get("execution_shard_indices", [0])
+    )
+    shard_assignments = execution_shard_assignments(plan, execution_shard_count)
     required_machine = plan.get("required_machine", {})
     peak_memory_fraction = required_machine.get("max_peak_memory_fraction")
     system_memory_mb = environment.get("system_memory_mb")
-    peak_memory_limit_mb = (
-        float(peak_memory_fraction) * float(system_memory_mb)
-        if peak_memory_fraction is not None and system_memory_mb is not None
-        else None
-    )
+    try:
+        peak_memory_limit_mb = (
+            float(peak_memory_fraction) * float(system_memory_mb)
+            if peak_memory_fraction is not None and system_memory_mb is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        peak_memory_limit_mb = None
 
     status_counts: Counter[str] = Counter()
+    result_origin_counts: Counter[str] = Counter()
     content_ids: set[str] = set()
     lineage_ids: set[str] = set()
     rows: list[dict[str, Any]] = []
@@ -176,9 +296,154 @@ def validate_campaign(
                     f"{run_key}: metadata mismatch for {field}: "
                     f"{row.get(field)!r}!={expected!r}"
                 )
+        reuse_rule = reuse_target_rules.get(
+            (
+                str(job["experiment_block"]),
+                str(job["planned_configuration_id"]),
+                int(job["repetition"]),
+            )
+        )
+        cell_rule = plan.get("reuse_cells", {}).get(run_key)
+        if cell_rule is not None:
+            reuse_rule = cell_rule
+        result_origin = str(row.get("result_origin", "") or "executed")
+        result_origin_counts[result_origin] += 1
+        if reuse_rule is not None and result_origin != "reused":
+            errors.append(f"{run_key}: planned reused result was executed")
+        elif reuse_rule is None and result_origin == "reused":
+            errors.append(f"{run_key}: unplanned reused result")
+        elif result_origin not in {"executed", "reused"}:
+            errors.append(f"{run_key}: unknown result origin {result_origin!r}")
+        if reuse_rule is not None and result_origin == "reused":
+            expected_reuse = {
+                "reused_from_campaign_id": reuse_rule["source_campaign_id"],
+                "reused_from_experiment_block": reuse_rule["source_block_id"],
+                "reused_from_configuration_id": reuse_rule[
+                    "source_configuration_id"
+                ],
+                "reused_from_repetition": reuse_rule["source_repetition"],
+            }
+            for field, expected in expected_reuse.items():
+                if str(row.get(field, "")) != str(expected):
+                    errors.append(
+                        f"{run_key}: reuse provenance mismatch for {field}"
+                    )
+            expected_source_run_key = cell_rule["source_run_key"] if cell_rule else "::".join(
+                (
+                    str(reuse_rule["source_campaign_id"]),
+                    str(reuse_rule["source_block_id"]),
+                    str(job["instance_content_id"]),
+                    str(reuse_rule["source_configuration_id"]),
+                    f"rep-{reuse_rule['source_repetition']}",
+                )
+            )
+            if row.get("reused_from_run_key") != expected_source_run_key:
+                errors.append(f"{run_key}: reused source run key mismatch")
+            if cell_rule and row.get("reused_source_record_sha256") != cell_rule.get(
+                "source_row_sha256"
+            ):
+                errors.append(f"{run_key}: reused source-row hash mismatch")
+            for field in (
+                "reused_from_plan_sha256",
+                "reused_source_record_sha256",
+            ):
+                if not re.fullmatch(r"[0-9a-f]{64}", str(row.get(field, ""))):
+                    errors.append(f"{run_key}: invalid {field}")
         expected_mode = job["configuration"].get("objective_mode", "")
         if str(row.get("objective_mode", "")) != str(expected_mode):
             errors.append(f"{run_key}: objective_mode mismatch")
+        if execution_shard_count > 1:
+            expected_shard_index = shard_assignments[run_key]
+            row_shard_indices = tuple(
+                int(value.strip())
+                for value in str(
+                    row.get("execution_shard_indices", "")
+                ).split(",")
+                if value.strip()
+            )
+            try:
+                row_shard_count = int(row.get("execution_shard_count", -1))
+                row_shard_index = int(row.get("execution_shard_index", -1))
+            except (TypeError, ValueError):
+                row_shard_count = -1
+                row_shard_index = -1
+            if row_shard_count != execution_shard_count:
+                errors.append(f"{run_key}: execution shard count mismatch")
+            if environment.get("merged_from_shards"):
+                if expected_shard_index not in row_shard_indices:
+                    errors.append(
+                        f"{run_key}: source shard assignment mismatch"
+                    )
+            elif row_shard_indices != execution_shard_indices:
+                errors.append(f"{run_key}: execution shard assignment mismatch")
+            if row_shard_index != expected_shard_index:
+                errors.append(f"{run_key}: execution shard index mismatch")
+            if row.get("execution_shard_policy") != EXECUTION_SHARD_POLICY:
+                errors.append(f"{run_key}: execution shard policy mismatch")
+            if expected_shard_index not in execution_shard_indices:
+                errors.append(f"{run_key}: result belongs to an unassigned shard")
+        is_shared_boolean_model = (
+            job["configuration"].get("executor") == "main"
+        )
+        expected_compact = job["configuration"].get(
+            "compact_encoding", "reference"
+        )
+        if is_shared_boolean_model and str(
+            row.get("compact_encoding", "")
+        ) != str(expected_compact):
+            errors.append(f"{run_key}: compact_encoding mismatch")
+        expected_collision_amo = job["configuration"].get(
+            "collision_amo", "pairwise"
+        )
+        observed_collision_amo = row.get("collision_amo", "")
+        if (
+            _is_blank(observed_collision_amo)
+            and "collision_amo" not in job["configuration"]
+        ):
+            observed_collision_amo = "pairwise"
+        if is_shared_boolean_model and str(
+            observed_collision_amo
+        ) != str(expected_collision_amo):
+            errors.append(f"{run_key}: collision_amo mismatch")
+        expected_cap_rule = job["configuration"].get(
+            "participant_idle_cap_rule", "none"
+        )
+        expected_cap_alpha = str(
+            job["configuration"].get("participant_idle_cap_alpha", "1/2")
+        )
+        if is_shared_boolean_model and str(
+            row.get("participant_idle_cap_rule", "none")
+        ) != expected_cap_rule:
+            errors.append(f"{run_key}: participant_idle_cap_rule mismatch")
+        if is_shared_boolean_model and expected_cap_rule != "none":
+            try:
+                observed_alpha = Fraction(
+                    str(row.get("participant_idle_cap_alpha"))
+                )
+            except (ValueError, ZeroDivisionError):
+                observed_alpha = None
+            if observed_alpha != Fraction(expected_cap_alpha):
+                errors.append(f"{run_key}: participant_idle_cap_alpha mismatch")
+        if (
+            is_shared_boolean_model
+            and expected_collision_amo == "adaptive_commander"
+            and not _is_blank(row.get("collision_amo_max_group_size"))
+            and int(float(row["collision_amo_max_group_size"])) >= 6
+            and int(float(row.get("collision_amo_commander_group_count") or 0))
+            <= 0
+        ):
+            errors.append(
+                f"{run_key}: adaptive commander selected but no group encoded"
+            )
+        if is_shared_boolean_model and expected_mode == "bg_d2" and expected_compact in {
+            "certified_bg",
+            "optimized",
+        }:
+            branch = str(row.get("zero_break_branch", ""))
+            if branch not in {"certified", "general_fallback"}:
+                errors.append(
+                    f"{run_key}: missing certified/fallback BG-d2 branch"
+                )
         for field, requirement in (
             ("threads", required_machine.get("threads_per_run")),
             ("random_seed", required_machine.get("random_seed")),
@@ -189,15 +454,23 @@ def validate_campaign(
                     errors.append(
                         f"{run_key}: {field}={value!r}, expected {requirement!r}"
                     )
-        if peak_memory_limit_mb is not None and status in TERMINAL_STATUSES:
+        row_peak_memory_limit_mb = peak_memory_limit_mb
+        if allow_environment_drift and peak_memory_fraction is not None:
+            try:
+                row_peak_memory_limit_mb = float(peak_memory_fraction) * float(
+                    row.get("system_memory_mb")
+                )
+            except (TypeError, ValueError):
+                row_peak_memory_limit_mb = peak_memory_limit_mb
+        if row_peak_memory_limit_mb is not None and status in TERMINAL_STATUSES:
             peak_memory_mb = row.get("peak_memory_mb")
             if _is_blank(peak_memory_mb):
                 errors.append(f"{run_key}: missing peak_memory_mb")
-            elif float(peak_memory_mb) > peak_memory_limit_mb:
+            elif float(peak_memory_mb) > row_peak_memory_limit_mb:
                 errors.append(
                     f"{run_key}: peak_memory_mb={peak_memory_mb} exceeds "
                     f"{float(peak_memory_fraction):.0%} of system RAM "
-                    f"({peak_memory_limit_mb:.3f} MiB)"
+                    f"({row_peak_memory_limit_mb:.3f} MiB)"
                 )
         if status == "OPTIMAL":
             if _objective_vector(row) is None:
@@ -206,12 +479,14 @@ def validate_campaign(
                 errors.append(f"{run_key}: OPTIMAL row has validation errors")
             if _truthy(row.get("runtime_censored")):
                 errors.append(f"{run_key}: OPTIMAL row is marked censored")
+        if expected_mode in {"is", "isq", "im_is", "ir_im_is", "ir_im_isq"} and status == "OPTIMAL":
+            errors.extend(f"{run_key}: {error}" for error in waiting_metric_errors(row))
         if status == "TIMEOUT" and not _truthy(row.get("runtime_censored")):
             errors.append(f"{run_key}: TIMEOUT row is not marked censored")
         row_uwr_hash = str(row.get("solver_binary_sha256", ""))
         configuration = job["configuration"]
         requires_uwr = (
-            configuration.get("executor") == "org_ir"
+            configuration.get("executor") in {"org_ir", "org_idle"}
             or (
                 configuration.get("executor") == "org_bg_d2"
                 and configuration.get("backend", "uwrmaxsat") == "uwrmaxsat"
@@ -225,7 +500,12 @@ def validate_campaign(
         )
         if requires_uwr and not row_uwr_hash:
             errors.append(f"{run_key}: missing required UWrMaxSAT binary hash")
-        if row_uwr_hash and expected_uwr_hash and row_uwr_hash != expected_uwr_hash:
+        if (
+            not allow_environment_drift
+            and row_uwr_hash
+            and expected_uwr_hash
+            and row_uwr_hash != expected_uwr_hash
+        ):
             errors.append(f"{run_key}: solver binary SHA-256 drift")
         content_ids.add(str(row.get("instance_content_id", "")))
         lineage_ids.add(str(row.get("base_lineage_id", "")))
@@ -234,13 +514,15 @@ def validate_campaign(
     # repetition must agree. Timeouts are omitted, but OPTIMAL versus UNSAT is
     # always an inconsistency.
     agreement_groups: dict[
-        tuple[str, str, str], list[dict[str, Any]]
+        tuple[str, str, str, str, str], list[dict[str, Any]]
     ] = defaultdict(list)
     for row in rows:
         agreement_groups[
             (
                 str(row.get("instance_content_id", "")),
                 str(row.get("objective_mode", "")),
+                str(row.get("participant_idle_cap_rule", "none")),
+                str(row.get("participant_idle_cap_alpha", "1/2")),
                 str(row.get("repetition", "")),
             )
         ].append(row)
@@ -283,7 +565,8 @@ def validate_campaign(
         ir_statuses = {
             row.get("status")
             for row in group_rows
-            if row.get("objective_mode") == "ir"
+            if row.get("objective_mode")
+            in {"ir", "ir_is", "ir_im_is", "ir_im_isq", "is", "isq", "im_is"}
             and row.get("status") in {"OPTIMAL", "UNSAT"}
         }
         bg_statuses = {
@@ -312,6 +595,7 @@ def validate_campaign(
         "missing_jobs": len(missing),
         "extra_jobs": len(extra),
         "status_counts": dict(status_counts),
+        "result_origin_counts": dict(result_origin_counts),
         "unique_contents": len(content_ids - {""}),
         "unique_lineages": len(lineage_ids - {""}),
         "agreement_groups_checked": agreement_checked,
@@ -324,6 +608,9 @@ def validate_campaign(
             }
         ),
         "feasibility_classes": dict(feasibility_classes),
+        "reuse_policy": plan.get("reuse_policy", "strict"),
+        "common_gcp_environment_assumed": common_gcp_assumed,
+        "environment_drift_accepted": allow_environment_drift,
         "valid": not errors,
         "errors": errors,
     }
@@ -336,6 +623,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--allow-incomplete", action="store_true")
     parser.add_argument("--allow-errors", action="store_true")
+    parser.add_argument(
+        "--allow-environment-drift",
+        action="store_true",
+        help=(
+            "accept recorded per-row solver/machine differences while retaining "
+            "their provenance"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -347,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_dirty=args.allow_dirty,
         allow_incomplete=args.allow_incomplete,
         allow_errors=args.allow_errors,
+        allow_environment_drift=args.allow_environment_drift,
     )
     report_path = output / "validation_report.json"
     with report_path.open("w", encoding="utf-8") as stream:

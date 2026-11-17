@@ -14,6 +14,59 @@ INSTANCE = PROJECT_ROOT / "data_table03_origin" / "tic-12.original.dzn"
 
 
 class OrgBaselineTests(unittest.TestCase):
+    def test_direct_baseline_builds_every_waiting_objective(self) -> None:
+        expected_names = {
+            "is": "IdleSum",
+            "isq": "SquaredIdleSum",
+            "im_is": "MaximumIdleThenIdleSum",
+            "ir_is": "IdleRangeThenIdleSum",
+            "ir_im_is": "IdleRangeThenMaximumIdleThenIdleSum",
+            "ir_im_isq": "IdleRangeThenMaximumIdleThenSquaredIdleSum",
+        }
+        with tempfile.TemporaryDirectory(prefix="b2b_direct_objectives_") as temp:
+            temp_path = Path(temp)
+            binary = temp_path / "uwrmaxsat"
+            binary.write_text(
+                "#!/bin/sh\nprintf 's UNSATISFIABLE\\n'\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+
+            for mode, expected_name in expected_names.items():
+                with self.subTest(mode=mode):
+                    csv_path = temp_path / f"{mode}.csv"
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            str(PROJECT_ROOT / "src" / "ORG_new.py"),
+                            "--instance",
+                            str(INSTANCE),
+                            "--family",
+                            "all",
+                            "--objective-mode",
+                            mode,
+                            "--uwrmaxsat-bin",
+                            str(binary),
+                            "--timeout",
+                            "10",
+                            "--csv",
+                            str(csv_path),
+                            "--excel-dir",
+                            str(temp_path / f"excel-{mode}"),
+                        ],
+                        cwd=PROJECT_ROOT,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=False,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    with csv_path.open(newline="", encoding="utf-8") as stream:
+                        row = next(csv.DictReader(stream))
+                    self.assertEqual(row["factor_o"], expected_name)
+                    self.assertEqual(row["model_family"], "DirectPerSlot")
+                    self.assertGreater(int(row["n_soft_clauses"]), 0)
+
     def test_baseline_has_strict_uwr_cli_and_standard_result_schema(self) -> None:
         with tempfile.TemporaryDirectory(prefix="b2b_org_baseline_") as temp:
             temp_path = Path(temp)

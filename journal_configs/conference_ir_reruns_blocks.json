@@ -1,0 +1,31 @@
+{
+  "description": "The Conference IR reference formulation for the three frozen benchmark sets.",
+  "blocks": [
+    {
+      "id": "conference_ir_reruns",
+      "datasets": [
+        "official_all_126",
+        "precedence_stress_60",
+        "precedence_stress_high_40"
+      ],
+      "repetitions": 2,
+      "configurations": [
+        {
+          "id": "conference_ir_rerun",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "compact_encoding": "reference",
+          "collision_amo": "pairwise",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

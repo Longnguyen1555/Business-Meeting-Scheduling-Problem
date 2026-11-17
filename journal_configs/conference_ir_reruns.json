@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-conference-ir-reruns-v1",
+  "description": "Audited archive of the two new Conference IR repetitions on All-126, Stress, and Stress-high. Source repetitions 1 and 2 are reused as target repetitions 2 and 3 in the matched-encoding campaigns.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20261024,
+  "require_clean_worktree": false,
+  "reuse_policy": "validated_common_gcp",
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "expected_job_count": 452,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    },
+    {
+      "id": "precedence_stress_60",
+      "manifest": "data_precedence_stress/instances_manifest.csv",
+      "family": "all"
+    },
+    {
+      "id": "precedence_stress_high_40",
+      "manifest": "data_precedence_stress_high/instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks_from": "conference_ir_reruns_blocks.json"
+}

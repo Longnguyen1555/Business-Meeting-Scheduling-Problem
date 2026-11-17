@@ -634,6 +634,7 @@ def solve_instance(
             metrics.total_internal_idle_slots if metrics is not None else None
         ),
         "assignment": _serialize(assignment),
+        "assignment_index_base": 0,
         "validation_errors": "; ".join(errors),
         "solver_message": "",
         "error_type": "ValidationError" if errors else "",

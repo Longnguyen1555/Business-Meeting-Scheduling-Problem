@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-cross-generation-evaluation-v1",
+  "description": "Direct, Compact-Base, and Compact-Objective under BG-d2, IR, and IR-IM-IS on 126 instances with three repetitions.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20261022,
+  "uwrmaxsat_sha256": "82485b4b973d80c618b28eef348a09dc5bc1ab0654696e2ed3b1764f52ef8202",
+  "require_clean_worktree": true,
+  "reuse_policy": "validated_common_gcp",
+  "reuse_assumption": "Completed rows from the common c4-highcpu-8 GCP profile are comparable after configuration, formula, status, schedule, and objective validation. Git, Python, and solver-build identifiers are retained as provenance but do not block reuse.",
+  "expected_job_count": 3402,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "reuse_results": [
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_bg_d2",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_bg_d2",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_bg_d2",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_bg_d2",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_bg_d2",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_bg_d2",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir_im_is",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir_im_is",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir_im_is",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir_im_is",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "published_2022_ir_im_is",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "direct_ir_im_is",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_bg_d2_ablation",
+      "source_configuration_id": "bg_reference",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_base_bg_d2",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_ablation",
+      "source_configuration_id": "ir_reference",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_base_ir",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-conference-ir-reruns-v1",
+      "source_block_id": "conference_ir_reruns",
+      "source_configuration_id": "conference_ir_rerun",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_base_ir",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-conference-ir-reruns-v1",
+      "source_block_id": "conference_ir_reruns",
+      "source_configuration_id": "conference_ir_rerun",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_base_ir",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-compact-objectives-v1",
+      "source_block_id": "compact_ir_im_is_ablation",
+      "source_configuration_id": "irimis_reference",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_base_ir_im_is",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_acf_bg_d2",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_bg_d2",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_acf_bg_d2",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_bg_d2",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_acf_bg_d2",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_bg_d2",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir",
+      "target_repetition": 3
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir_im_is",
+      "source_repetition": 1,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir_im_is",
+      "target_repetition": 1
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir_im_is",
+      "source_repetition": 2,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir_im_is",
+      "target_repetition": 2
+    },
+    {
+      "source_campaign_id": "journal-main-objectives-v1",
+      "source_block_id": "primary_two_models_three_objectives",
+      "source_configuration_id": "compact_cdf_ir_im_is",
+      "source_repetition": 3,
+      "target_block_id": "cross_generation_three_by_three",
+      "target_configuration_id": "compact_objective_ir_im_is",
+      "target_repetition": 3
+    }
+  ],
+  "blocks_from": "cross_generation_evaluation_blocks.json",
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  }
+}

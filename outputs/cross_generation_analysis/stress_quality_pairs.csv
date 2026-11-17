@@ -1,0 +1,7 @@
+dataset,instances,left_objective,right_objective,measure,lower,equal,higher
+Stress,47,IR-IM-IS,IR,idle_range_pstar,0,47,0
+Stress,47,IR-IM-IS,IR,maximum_internal_idle_slots,4,43,0
+Stress,47,IR-IM-IS,IR,total_internal_idle_slots,22,25,0
+Stress-high,21,IR-IM-IS,IR,idle_range_pstar,0,21,0
+Stress-high,21,IR-IM-IS,IR,maximum_internal_idle_slots,0,21,0
+Stress-high,21,IR-IM-IS,IR,total_internal_idle_slots,20,1,0

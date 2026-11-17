@@ -1,4 +1,0 @@
-dataset	manifest	expected_instances	expected_rows	exit_code	finished_utc
-official	/home/dclng566/projects/Business-Meeting-Scheduling-Problem/instances_manifest.csv	40	480	0	2026-07-28T14:00:42Z
-stress	/home/dclng566/projects/Business-Meeting-Scheduling-Problem/data_precedence_stress/instances_manifest.csv	60	720	0	2026-07-28T15:33:49Z
-stress-high	/home/dclng566/projects/Business-Meeting-Scheduling-Problem/data_precedence_stress_high/instances_manifest.csv	40	480	0	2026-07-28T16:05:32Z

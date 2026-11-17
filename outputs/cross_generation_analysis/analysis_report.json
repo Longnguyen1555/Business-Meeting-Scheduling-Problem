@@ -1,0 +1,76 @@
+{
+  "production_campaign_complete": true,
+  "aggregation": "three_repetitions",
+  "matrix_validation": {
+    "valid": true,
+    "row_count": 6102,
+    "datasets": {
+      "All-126": {
+        "valid": true,
+        "errors": [],
+        "row_count": 3402,
+        "expected_row_count": 3402,
+        "unique_instance_count": 126,
+        "duplicate_cell_count": 0
+      },
+      "Stress": {
+        "valid": true,
+        "errors": [],
+        "row_count": 1620,
+        "expected_row_count": 1620,
+        "unique_instance_count": 60,
+        "duplicate_cell_count": 0
+      },
+      "Stress-high": {
+        "valid": true,
+        "errors": [],
+        "row_count": 1080,
+        "expected_row_count": 1080,
+        "unique_instance_count": 40,
+        "duplicate_cell_count": 0
+      }
+    }
+  },
+  "single_run_results_available": true,
+  "source_results": "/Users/tuyenkv/Documents/B2B meeting/Business-Meeting-Scheduling-Problem/outputs/journal/matched-encoding-v2-complete/normalized/detailed.csv",
+  "source_results_sha256": "a972ba988862edb765f7d67afcf03eb2c9f18f4ac46f2e9d7f2e6781b5056298",
+  "conference_consistency": "passed: per-instance IR outcomes and optima; Compact-Base formula identity",
+  "time_rss_policy": "optimal-runs",
+  "time_rss_rule": "median of available OPTIMAL runs per OPTIMAL instance; otherwise all three runs; then median over instances",
+  "outcome_rule": "OPT if at least one repetition proves optimality; UNSAT if proven; otherwise TIMEOUT",
+  "paired_runtime_rule": "all three repetitions OPTIMAL in both encodings",
+  "PAR2_rule": "penalize each run before taking the per-instance median, then average instances",
+  "ablation_runtime": "descriptive single-run measurements",
+  "manuscript_prose_review_required": true,
+  "source_data_sha256": {
+    "ablation_summary.csv": "e1f0a090042e33936486f0b18422964d0b0d95dabf303b41bcbceb57d977e10c",
+    "analysis_set_membership.csv": "ee2b93ebc056b390a99890d67b3b27a7bee2384b7e6af9e139555c819048a368",
+    "attainable_extension_formula_rows.csv": "231bc9f0bf7c477dc4d9007a5c691cf34f0b1e99f03289b7ba0281d4ac875ad6",
+    "benchmark_formula_effects.csv": "10d9825a03b960c398b2d1eb534a6eb983fdd025f22efb4e3a0cc7b791c98808",
+    "benchmark_formula_reductions.csv": "27ac39277e364dc1d5bdc270df13028244b6c7bc17b8a3d1a1e8712db1b92202",
+    "benchmark_formula_summary.csv": "e50950d79ca73296299bec1224718aa692d84aaf024609bbc90462f7c974aa15",
+    "benchmark_primary_ablation_summary.csv": "209ff0c25e56823fda268e638dc168f5ad6c91764f4640487e92dfb049c30067",
+    "benchmark_runtime_effects.csv": "1c1214e8a86c2f83676e373001964904bcc821fcc8d6f6f470e1ef3513abdc3c",
+    "benchmark_runtime_ratios.csv": "67b42f042f5816817b2991eb6a9c50e859ca54316d317312148ffede2906d905",
+    "benchmark_runtime_summary.csv": "c5842dff8fe6953b071e81bcfff6aa7b655a4e14db06d40cf3ead3cec0a24301",
+    "benchmark_timeouts.csv": "6a17a0096f536cfe8b1ccfdb8d6a9560d420fe763368e2e188cb5bfc648d4d29",
+    "formula_effects.csv": "6f7cac1f9dc7f10495cf800d47dcb42a2282a8e27b2de7c0b19eb1c2d68cb515",
+    "formula_ratios.csv": "82ca09b090bb4674f83e3536b03915d71fb29c06261681eb51a50c60d0467c78",
+    "formula_reductions.csv": "6756ce3a11d8c7e8717dbed0c4f538356397248cb21d3b103aefe3b4f620ed89",
+    "formula_rows.csv": "ecddfa4280797fa29d636a5917ffda362b0edc3572b5bf535c042745779965e8",
+    "formula_summary.csv": "203eab3ff6cdbd56b58af3ae2310bfd7a05143e41be12e28315f9b399b5b48e1",
+    "quality_effects.csv": "ed21d21c2048e80aeec08d7bebb8e50ea4feb360a94ad25fef6e18eb8b62f51c",
+    "quality_pairs.csv": "e1cead4f50fb1c64334e8cfe076bf78c88a7bb38573c4fc499436c1621bdf5e3",
+    "quality_summary.csv": "6b92a683e0ee53b20830cb5e8375115e4a751a1082b7a2a0b1e244dbc3173d97",
+    "remaining_runs.csv": "04f612427ca1272f479867ffc4246714ebcf693c2262bec4a428413ab9e6b18a",
+    "repetition_outcomes.csv": "c55faca727f1c41271db6fc6dd909d6db0600e9789261edd46f505b6b8bc8dc7",
+    "reuse_inventory.csv": "0686f7952d685bb5d68046fc782e51c09a8075838aaff5590c200abd29e01c51",
+    "runtime_effects.csv": "b8736a163080029884e87950ed7f6b0307113b92944de216ba534372bb6583ab",
+    "runtime_effects_single_run.csv": "85ff0cfd6fa8a8e1a7424776e952eacadaa21835ee283d1ce77a465210bce710",
+    "runtime_ratios_single_run.csv": "7808cfece3ef4574d907f3106454549996cbaa75bd58546d4497d4d246cbe315",
+    "runtime_summary_single_run.csv": "6c70019fb879dc9def15d54ad346567c3d7ca2a4b607f328aa92d0003a8c7a1a",
+    "stress_quality_membership.csv": "befa7fe1094ee7cd7e40d4e8eda7d6525da36c9cfbb91c9c1f2470cc75500f17",
+    "stress_quality_pairs.csv": "51ad04294957ad8800a2b2cc497db3ac5434a05945626e34cac6c7d19181fd46",
+    "timeouts_single_run.csv": "4365a6912fe7a9223cfca721c315925525ed2f6f99291d48e5cc5aaf8bbc7708"
+  }
+}

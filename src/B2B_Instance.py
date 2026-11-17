@@ -4,6 +4,7 @@ import re
 import time
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +17,28 @@ PrecedenceGraph = Literal["direct", "distance_closure"]
 DomainFilterGraph = Literal["direct", "distance_closure"]
 EncodingVariant = Literal["basic", "imp1", "imp2", "imp12", "imp12+"]
 DomainMode = Literal["full", "reduced"]
-ObjectiveMode = Literal["ir", "bg_d2", "ir_is", "bg_ir_is"]
+ObjectiveMode = Literal[
+    "ir",
+    "bg_d2",
+    "bg_dinf",
+    "ir_is",
+    "ir_im_is",
+    "ir_im_isq",
+    "bg_ir_is",
+    "is",
+    "isq",
+    "im_is",
+]
+CompactEncoding = Literal[
+    "reference",
+    "certified_bg",
+    "demand_driven",
+    "shared_counter",
+    "direct_range_soft",
+    "optimized",
+    "objective_aware",
+]
+CollisionAMOEncoding = Literal["pairwise", "adaptive_commander"]
 
 VALID_PRECEDENCE_MODES = {"traditional", "staircase"}
 VALID_PRECEDENCE_ENCODINGS = {"pairwise", "sparse_suffix"}
@@ -24,7 +46,61 @@ VALID_PRECEDENCE_GRAPHS = {"direct", "distance_closure"}
 VALID_DOMAIN_FILTER_GRAPHS = {"direct", "distance_closure"}
 VALID_ENCODING_VARIANTS = {"basic", "imp1", "imp2", "imp12", "imp12+"}
 VALID_DOMAIN_MODES = {"full", "reduced"}
-VALID_OBJECTIVE_MODES = {"ir", "bg_d2", "ir_is", "bg_ir_is"}
+VALID_OBJECTIVE_MODES = {
+    "ir",
+    "bg_d2",
+    "bg_dinf",
+    "ir_is",
+    "ir_im_is",
+    "ir_im_isq",
+    "bg_ir_is",
+    "is",
+    "isq",
+    "im_is",
+}
+VALID_COMPACT_ENCODINGS = {
+    "reference",
+    "certified_bg",
+    "demand_driven",
+    "shared_counter",
+    "direct_range_soft",
+    "optimized",
+    "objective_aware",
+}
+VALID_COLLISION_AMO_ENCODINGS = {"pairwise", "adaptive_commander"}
+VALID_PARTICIPANT_IDLE_CAP_RULES = {"none", "interpolated_bounds"}
+
+# The crossover is exact for the implemented encodings: pairwise uses
+# n(n-1)/2 clauses, whereas a group-size-four commander AMO first improves
+# that count at n=6 (14 instead of 15 clauses).  Keep these values frozen as
+# part of the experimental configuration rather than tuning per instance.
+COLLISION_AMO_COMMANDER_CUTOFF = 6
+COLLISION_AMO_COMMANDER_GROUP_SIZE = 4
+
+COMPACT_ENCODING_FEATURES = {
+    "reference": frozenset(),
+    "certified_bg": frozenset({"certified_bg"}),
+    "demand_driven": frozenset({"demand_driven"}),
+    "shared_counter": frozenset({"shared_counter"}),
+    "direct_range_soft": frozenset({"direct_range_soft"}),
+    "optimized": frozenset(
+        {
+            "certified_bg",
+            "demand_driven",
+            "shared_counter",
+            "direct_range_soft",
+        }
+    ),
+    "objective_aware": frozenset(
+        {
+            "certified_bg",
+            "demand_driven",
+            "shared_counter",
+            "direct_range_soft",
+            "attainable_values",
+        }
+    ),
+}
 
 LEGACY_PRECEDENCE_CONFIGURATIONS: dict[str, tuple[str, str]] = {
     "traditional": ("pairwise", "direct"),
@@ -90,17 +166,48 @@ class DomainReductionStats:
 
 @dataclass(frozen=True)
 class ObjectiveTier:
-    """One exact cardinality tier in a lexicographic objective.
+    """One exact tier in a lexicographic objective.
 
-    The true-literal count is the tier value. ``scalar_weight`` is one for a
-    single-tier objective and a proven dominating weight for one-shot MaxSAT.
-    SAT optimizers ignore this weight and optimize the tiers sequentially.
+    Normally the true-literal count is the tier value. A MaxSAT-only compact
+    tier may instead provide exact penalty clauses or positive within-tier
+    weights (ISQ). Such weighted tiers are not plain SAT cardinalities.
+    ``scalar_weight`` is one for a single-tier objective and a proven
+    dominating weight for one-shot MaxSAT. SAT optimizers ignore this weight
+    and optimize tiers sequentially.
     """
 
     name: str
     literals: tuple[int, ...]
     upper_bound: int
     scalar_weight: int
+    penalty_clauses: tuple[tuple[int, ...], ...] = ()
+    penalty_weights: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.penalty_weights and (
+            len(self.penalty_weights) != len(self.maxsat_clauses)
+            or any(weight <= 0 for weight in self.penalty_weights)
+        ):
+            raise ValueError("tier penalty weights must be positive and match clauses")
+
+    @property
+    def maxsat_weights(self) -> tuple[int, ...]:
+        """Within-tier costs, before the lexicographic dominating multiplier."""
+        return self.penalty_weights or (1,) * len(self.maxsat_clauses)
+
+    @property
+    def maxsat_clauses(self) -> tuple[tuple[int, ...], ...]:
+        """Return clauses penalized by the corresponding ``maxsat_weights``."""
+
+        if self.penalty_clauses:
+            return self.penalty_clauses
+        return tuple((-literal,) for literal in self.literals)
+
+    @property
+    def supports_cardinality_search(self) -> bool:
+        """Whether the tier is a plain count usable by the SAT procedures."""
+
+        return not self.penalty_clauses and not self.penalty_weights
 
 
 @dataclass(frozen=True)
@@ -130,6 +237,14 @@ class B2BSolutionStats:
     def total_internal_idle_slots(self) -> int:
         """Sum of internal idle slots over all participants."""
         return self.total_breaks
+
+    @property
+    def maximum_internal_idle_slots(self) -> int:
+        return max((self.participant_breaks[p] for p in self.objective_participants), default=0)
+
+    @property
+    def squared_internal_idle_slots(self) -> int:
+        return sum(self.participant_breaks[p] ** 2 for p in self.objective_participants)
 
     @property
     def participant_internal_idle_slots(self) -> list[int]:
@@ -207,6 +322,39 @@ class B2BModelArtifacts:
     precedence_sparse_link_clauses: int
     precedence_unique_suffix_cuts: int
     objective_encoding: str
+    compact_encoding: str
+    compact_encoding_features: tuple[str, ...]
+    zero_break_certificate_participant: int | None
+    zero_break_certificate_reason: str
+    zero_break_branch: str
+    occupancy_alias_count: int
+    prefix_alias_count: int
+    suffix_alias_count: int
+    first_alias_count: int
+    shared_counter_state_count: int
+    direct_range_soft_clause_count: int
+    collision_amo_encoding: str
+    collision_amo_cutoff: int
+    collision_amo_commander_group_size: int
+    collision_amo_pairwise_group_count: int
+    collision_amo_commander_group_count: int
+    collision_amo_commander_variable_count: int
+    collision_amo_clause_count: int
+    collision_amo_max_group_size: int
+    participant_idle_cap_rule: str
+    participant_idle_cap_alpha: str
+    participant_idle_lower_bounds: tuple[int, ...]
+    participant_idle_upper_bounds: tuple[int, ...]
+    participant_idle_caps: tuple[int, ...]
+    participant_idle_bounds_feasible: bool
+    participant_idle_cap_clause_count: int
+    participant_idle_attainable_values: tuple[tuple[int, ...], ...]
+    idle_threshold_dense_level_count: int
+    idle_threshold_encoded_level_count: int
+    idle_threshold_removed_level_count: int
+    objective_aggregate_dense_level_count: int
+    objective_aggregate_encoded_level_count: int
+    objective_constant_soft_weight: int
 
 # ---------------------------------------------------------------------------
 # MiniZinc .dzn parser
@@ -521,6 +669,214 @@ def _has_full_slot_matching(
     return all(augment(meeting, set()) for meeting in remaining)
 
 
+def compute_participant_idle_bounds(
+    inst: B2BInstance,
+) -> tuple[tuple[int, ...], tuple[int, ...], bool]:
+    """Return reproducible unary-domain bounds ``LB_p`` and ``UB_p`` for idle.
+
+    The bounds deliberately use only the original unary domains (session,
+    fixed meetings, and participant availability), so Full and Reduced models
+    receive identical caps. ``LB_p`` is the shortest interval in which the
+    participant's meetings admit distinct eligible slots. ``UB_p`` spans the
+    earliest and latest eligible slots. Inter-participant table conflicts and
+    precedences are excluded from this bound calculation.
+    """
+
+    domains = [
+        set(original_eligible_slots(inst, meeting))
+        for meeting in range(inst.n_meetings)
+    ]
+    lower: list[int] = []
+    upper: list[int] = []
+    feasible = True
+
+    for meetings in inst.meetings_by_business:
+        count = len(meetings)
+        if count <= 1:
+            lower.append(0)
+            upper.append(0)
+            continue
+
+        union = set().union(*(domains[meeting] for meeting in meetings))
+        participant_feasible = bool(union) and _has_full_slot_matching(
+            meetings, domains
+        )
+        if not participant_feasible:
+            lower.append(0)
+            upper.append(0)
+            feasible = False
+            continue
+
+        upper_bound = max(0, max(union) - min(union) + 1 - count)
+        lower_bound: int | None = None
+        for width in range(count, inst.n_total_slots + 1):
+            for left in range(0, inst.n_total_slots - width + 1):
+                right = left + width - 1
+                restricted = list(domains)
+                restricted = [set(values) for values in restricted]
+                for meeting in meetings:
+                    restricted[meeting].intersection_update(range(left, right + 1))
+                if _has_full_slot_matching(meetings, restricted):
+                    lower_bound = width - count
+                    break
+            if lower_bound is not None:
+                break
+
+        if lower_bound is None:
+            lower.append(0)
+            upper.append(upper_bound)
+            feasible = False
+        else:
+            lower.append(lower_bound)
+            upper.append(upper_bound)
+
+    return tuple(lower), tuple(upper), feasible
+
+
+def _has_interval_matching_with_endpoints(
+    meetings: list[int],
+    domains: list[set[int]],
+    *,
+    left: int,
+    right: int,
+    left_meeting: int,
+    right_meeting: int,
+) -> bool:
+    """Return whether a participant can occupy both ends of an interval.
+
+    ``left_meeting`` and ``right_meeting`` are fixed to the two endpoints.
+    Every remaining meeting must use a distinct interior slot.  The routine is
+    deliberately local to one participant.  It therefore provides a safe
+    support test without making assumptions about other participants or table
+    capacity.
+    """
+
+    if left_meeting == right_meeting:
+        return False
+    if left not in domains[left_meeting] or right not in domains[right_meeting]:
+        return False
+
+    remaining = [
+        meeting
+        for meeting in meetings
+        if meeting not in {left_meeting, right_meeting}
+    ]
+    if not remaining:
+        return True
+
+    interior = set(range(left + 1, right))
+    eligible = {
+        meeting: domains[meeting].intersection(interior)
+        for meeting in remaining
+    }
+    if any(not values for values in eligible.values()):
+        return False
+
+    remaining.sort(key=lambda meeting: len(eligible[meeting]))
+    slot_owner: dict[int, int] = {}
+
+    def augment(meeting: int, seen: set[int]) -> bool:
+        for slot in sorted(eligible[meeting]):
+            if slot in seen:
+                continue
+            seen.add(slot)
+            owner = slot_owner.get(slot)
+            if owner is None or augment(owner, seen):
+                slot_owner[slot] = meeting
+                return True
+        return False
+
+    return all(augment(meeting, set()) for meeting in remaining)
+
+
+def compute_participant_attainable_idle_values(
+    inst: B2BInstance,
+    domains: list[list[int]] | list[set[int]],
+) -> tuple[tuple[int, ...], ...]:
+    """Compute locally attainable internal-waiting values for each participant.
+
+    A value is retained when the participant's meetings admit a distinct-slot
+    matching whose first and last occupied slots realize that value.  The
+    supplied domains may already include any solution-preserving filtering.
+    Consequently, every globally feasible schedule uses a retained value, while
+    values that need conflicts with other participants may remain in the set.
+    This one-sided guarantee is exactly what objective compression requires.
+    """
+
+    if len(domains) != inst.n_meetings:
+        raise ValueError("domain count must match the number of meetings")
+    normalized = [set(values) for values in domains]
+    profiles: list[tuple[int, ...]] = []
+
+    for meetings in inst.meetings_by_business:
+        count = len(meetings)
+        if count <= 1:
+            profiles.append((0,))
+            continue
+        if any(not normalized[meeting] for meeting in meetings):
+            profiles.append((0,))
+            continue
+
+        possible_slots = sorted(
+            set().union(*(normalized[meeting] for meeting in meetings))
+        )
+        values: set[int] = set()
+        for left in possible_slots:
+            left_candidates = [
+                meeting for meeting in meetings if left in normalized[meeting]
+            ]
+            for right in possible_slots:
+                if right - left + 1 < count:
+                    continue
+                right_candidates = [
+                    meeting for meeting in meetings if right in normalized[meeting]
+                ]
+                supported = any(
+                    _has_interval_matching_with_endpoints(
+                        meetings,
+                        normalized,
+                        left=left,
+                        right=right,
+                        left_meeting=left_meeting,
+                        right_meeting=right_meeting,
+                    )
+                    for left_meeting in left_candidates
+                    for right_meeting in right_candidates
+                    if left_meeting != right_meeting
+                )
+                if supported:
+                    values.add(right - left + 1 - count)
+
+        # An empty profile can occur only when the local all-different
+        # constraint is infeasible.  The base CNF is then unsatisfiable, so a
+        # neutral placeholder keeps the artifact schema total without changing
+        # any feasible objective value.
+        profiles.append(tuple(sorted(values)) if values else (0,))
+
+    return tuple(profiles)
+
+
+def interpolate_participant_idle_caps(
+    lower_bounds: tuple[int, ...],
+    upper_bounds: tuple[int, ...],
+    alpha: Fraction | str | int | float = Fraction(1, 2),
+) -> tuple[int, ...]:
+    """Compute ``floor(LB_p + alpha (UB_p-LB_p))`` exactly."""
+
+    fraction = alpha if isinstance(alpha, Fraction) else Fraction(str(alpha))
+    if fraction < 0 or fraction > 1:
+        raise ValueError("participant idle cap alpha must lie in [0, 1]")
+    if len(lower_bounds) != len(upper_bounds):
+        raise ValueError("participant idle lower/upper bound lengths differ")
+    caps: list[int] = []
+    for lower, upper in zip(lower_bounds, upper_bounds):
+        if lower < 0 or upper < lower:
+            raise ValueError(f"invalid participant idle bounds [{lower}, {upper}]")
+        value = Fraction(lower) + fraction * (upper - lower)
+        caps.append(value.numerator // value.denominator)
+    return tuple(caps)
+
+
 def _propagate_distance_precedences(
     domains: list[set[int]],
     distances_by_post: list[dict[int, int]],
@@ -771,8 +1127,22 @@ def compute_solution_stats(
     objective_vectors = {
         "ir": (objective_gap,),
         "bg_d2": (total_break_groups,),
+        "bg_dinf": (total_break_groups,),
         "ir_is": (objective_gap, total_idle),
+        "ir_im_is": (
+            objective_gap,
+            max(objective_values, default=0),
+            total_idle,
+        ),
+        "ir_im_isq": (
+            objective_gap,
+            max(objective_values, default=0),
+            sum(value * value for value in objective_values),
+        ),
         "bg_ir_is": (total_break_groups, objective_gap, total_idle),
+        "is": (total_idle,),
+        "isq": (sum(value * value for value in objective_values),),
+        "im_is": (max(objective_values, default=0), total_idle),
     }
     return B2BSolutionStats(
         total_breaks=total_idle,
@@ -951,6 +1321,10 @@ class B2BSATModel:
         precedence_graph: PrecedenceGraph | None = None,
         domain_filter_graph: DomainFilterGraph = "distance_closure",
         objective_mode: ObjectiveMode = "ir",
+        compact_encoding: CompactEncoding = "reference",
+        collision_amo_encoding: CollisionAMOEncoding = "pairwise",
+        participant_idle_cap_rule: str = "none",
+        participant_idle_cap_alpha: Fraction | str | int | float = "1/2",
     ) -> None:
         if encoding_variant not in VALID_ENCODING_VARIANTS:
             raise ValueError(f"Unknown encoding_variant={encoding_variant!r}")
@@ -962,6 +1336,29 @@ class B2BSATModel:
             )
         if objective_mode not in VALID_OBJECTIVE_MODES:
             raise ValueError(f"Unknown objective_mode={objective_mode!r}")
+        if compact_encoding not in VALID_COMPACT_ENCODINGS:
+            raise ValueError(f"Unknown compact_encoding={compact_encoding!r}")
+        if collision_amo_encoding not in VALID_COLLISION_AMO_ENCODINGS:
+            raise ValueError(
+                "Unknown collision_amo_encoding="
+                f"{collision_amo_encoding!r}"
+            )
+        if participant_idle_cap_rule not in VALID_PARTICIPANT_IDLE_CAP_RULES:
+            raise ValueError(
+                "Unknown participant_idle_cap_rule="
+                f"{participant_idle_cap_rule!r}"
+            )
+        if participant_idle_cap_rule != "none" and objective_mode not in {
+            "ir_im_is",
+            "ir_im_isq",
+        }:
+            raise ValueError(
+                "participant idle caps are defined only for ir_im_is and "
+                "ir_im_isq"
+            )
+        cap_alpha = Fraction(str(participant_idle_cap_alpha))
+        if cap_alpha < 0 or cap_alpha > 1:
+            raise ValueError("participant idle cap alpha must lie in [0, 1]")
 
         (
             resolved_precedence_encoding,
@@ -985,6 +1382,32 @@ class B2BSATModel:
         self.domain_mode = domain_mode
         self.domain_filter_graph = domain_filter_graph
         self.objective_mode = objective_mode
+        self.compact_encoding = compact_encoding
+        self.compact_encoding_features = COMPACT_ENCODING_FEATURES[
+            compact_encoding
+        ]
+        self.collision_amo_encoding = collision_amo_encoding
+        self.participant_idle_cap_rule = participant_idle_cap_rule
+        self.participant_idle_cap_alpha = cap_alpha
+        (
+            self.participant_idle_lower_bounds,
+            self.participant_idle_upper_bounds,
+            self.participant_idle_bounds_feasible,
+        ) = compute_participant_idle_bounds(inst)
+        self.participant_idle_caps = (
+            interpolate_participant_idle_caps(
+                self.participant_idle_lower_bounds,
+                self.participant_idle_upper_bounds,
+                cap_alpha,
+            )
+            if participant_idle_cap_rule == "interpolated_bounds"
+            else tuple(self.participant_idle_upper_bounds)
+        )
+        self.participant_idle_cap_clause_count = 0
+        self.collision_amo_cutoff = COLLISION_AMO_COMMANDER_CUTOFF
+        self.collision_amo_commander_group_size = (
+            COLLISION_AMO_COMMANDER_GROUP_SIZE
+        )
         self.objective_participants = tuple(
             participant
             for participant, meeting_count in enumerate(inst.n_meetings_business)
@@ -1045,7 +1468,65 @@ class B2BSATModel:
         self._precedence_sparse_link_clauses = 0
         self._precedence_unique_suffix_cuts = 0
         self._used_slots_channeled = False
-        self._prefix_suffix_built: set[int] = set()
+        self._prefix_built: set[int] = set()
+        self._suffix_built: set[int] = set()
+        self._prefix_states: dict[tuple[int, int], int | None] = {}
+        self._suffix_states: dict[tuple[int, int], int | None] = {}
+        self._occupancy_alias_count = 0
+        self._prefix_alias_count = 0
+        self._suffix_alias_count = 0
+        self._first_alias_count = 0
+        self._shared_counter_state_count = 0
+        self._direct_range_soft_clauses: dict[
+            str, list[tuple[int, ...]]
+        ] = {}
+        self._range_max_lits: dict[str, list[int]] = {}
+        self._idle_threshold_levels: list[tuple[int, ...]] = [
+            tuple() for _ in range(self.inst.n_business)
+        ]
+        self._idle_threshold_lit_by_level: list[dict[int, int]] = [
+            {} for _ in range(self.inst.n_business)
+        ]
+        self._participant_idle_attainable_values = (
+            compute_participant_attainable_idle_values(
+                self.inst,
+                self._reduced_slots,
+            )
+            if "attainable_values" in self.compact_encoding_features
+            else tuple((0,) for _ in range(self.inst.n_business))
+        )
+        self._direct_range_soft_weights: dict[str, list[int]] = {}
+        self._direct_idle_sum_clauses: list[tuple[int, ...]] = []
+        self._range_max_penalty_clauses: dict[
+            str, list[tuple[int, ...]]
+        ] = {}
+        self._range_max_penalty_weights: dict[str, list[int]] = {}
+        self._aggregate_or_cache: dict[tuple[int, ...], int | bool] = {}
+        self._aggregate_and_cache: dict[tuple[int, ...], int | bool] = {}
+        self._objective_aggregate_dense_level_count = 0
+        self._objective_aggregate_encoded_level_count = 0
+        self._objective_constant_soft_weight = 0
+        self._constant_true_lit: int | None = None
+        self._collision_amo_pairwise_group_count = 0
+        self._collision_amo_commander_group_count = 0
+        self._collision_amo_commander_variable_count = 0
+        self._collision_amo_clause_count = 0
+        self._collision_amo_max_group_size = 0
+        self._collision_amo_commander_serial = 0
+        self.zero_break_certificate_participant = next(
+            (
+                participant
+                for participant, meetings in enumerate(inst.meetings_by_business)
+                if len(meetings) <= 1
+            ),
+            None,
+        )
+        self.zero_break_certificate_reason = (
+            "participant_requests_at_most_one_meeting"
+            if self.zero_break_certificate_participant is not None
+            else ""
+        )
+        self.zero_break_branch = "not_applicable"
 
         self._schedule_vars: dict[tuple[int, int], int] = {}
         for meeting, slots in enumerate(self._eligible_slots):
@@ -1062,9 +1543,20 @@ class B2BSATModel:
                 for slot in self._eligible_slots[meeting]
             }
             for slot in sorted(possible_slots):
-                self._used_vars[participant, slot] = self.vpool.id(
-                    ("usedSlot", participant, slot)
-                )
+                scheduled = [
+                    lit
+                    for meeting in meetings
+                    if (lit := self.x_or_none(meeting, slot)) is not None
+                ]
+                if "demand_driven" in self.compact_encoding_features and len(
+                    scheduled
+                ) == 1:
+                    self._used_vars[participant, slot] = scheduled[0]
+                    self._occupancy_alias_count += 1
+                else:
+                    self._used_vars[participant, slot] = self.vpool.id(
+                        ("usedSlot", participant, slot)
+                    )
 
     # Public variable/domain helpers -----------------------------------
 
@@ -1264,6 +1756,8 @@ class B2BSATModel:
         )
         self.enabled_constraints = [
             objective_policy,
+            f"compact objective encoding preset: {self.compact_encoding}",
+            f"participant collision AMO: {self.collision_amo_encoding}",
             f"F-selected {filter_label} domain propagation and cycle detection",
             "precedence configuration: "
             f"F={self.domain_filter_graph}, "
@@ -1376,11 +1870,95 @@ class B2BSATModel:
             objective_encoding={
                 "ir": "linear first/last span with exact unary thresholds",
                 "ir_is": "exact_idle_span_threshold_range_then_idle_sum",
+                "ir_im_is": (
+                    "exact_idle_span_threshold_range_then_maximum_then_sum"
+                ),
+                "ir_im_isq": (
+                    "exact_idle_span_threshold_range_then_maximum_then_squared_sum"
+                ),
+                "is": "exact_idle_span_threshold_sum",
+                "isq": "exact_idle_span_threshold_odd_weights",
+                "im_is": "exact_idle_maximum_threshold_then_sum",
                 "bg_d2": "exact_break_group_threshold_range_cap_d2",
+                "bg_dinf": "exact_break_group_sum_without_homogeneity",
                 "bg_ir_is": (
                     "exact_break_group_sum_then_idle_range_then_idle_sum"
                 ),
-            }[self.objective_mode],
+            }[self.objective_mode]
+            + f";compact={self.compact_encoding};bg_branch={self.zero_break_branch}",
+            compact_encoding=self.compact_encoding,
+            compact_encoding_features=tuple(
+                sorted(self.compact_encoding_features)
+            ),
+            zero_break_certificate_participant=(
+                self.zero_break_certificate_participant
+            ),
+            zero_break_certificate_reason=self.zero_break_certificate_reason,
+            zero_break_branch=self.zero_break_branch,
+            occupancy_alias_count=self._occupancy_alias_count,
+            prefix_alias_count=self._prefix_alias_count,
+            suffix_alias_count=self._suffix_alias_count,
+            first_alias_count=self._first_alias_count,
+            shared_counter_state_count=self._shared_counter_state_count,
+            direct_range_soft_clause_count=sum(
+                len(clauses)
+                for clauses in self._direct_range_soft_clauses.values()
+            ),
+            collision_amo_encoding=self.collision_amo_encoding,
+            collision_amo_cutoff=self.collision_amo_cutoff,
+            collision_amo_commander_group_size=(
+                self.collision_amo_commander_group_size
+            ),
+            collision_amo_pairwise_group_count=(
+                self._collision_amo_pairwise_group_count
+            ),
+            collision_amo_commander_group_count=(
+                self._collision_amo_commander_group_count
+            ),
+            collision_amo_commander_variable_count=(
+                self._collision_amo_commander_variable_count
+            ),
+            collision_amo_clause_count=self._collision_amo_clause_count,
+            collision_amo_max_group_size=self._collision_amo_max_group_size,
+            participant_idle_cap_rule=self.participant_idle_cap_rule,
+            participant_idle_cap_alpha=(
+                f"{self.participant_idle_cap_alpha.numerator}/"
+                f"{self.participant_idle_cap_alpha.denominator}"
+            ),
+            participant_idle_lower_bounds=self.participant_idle_lower_bounds,
+            participant_idle_upper_bounds=self.participant_idle_upper_bounds,
+            participant_idle_caps=self.participant_idle_caps,
+            participant_idle_bounds_feasible=(
+                self.participant_idle_bounds_feasible
+            ),
+            participant_idle_cap_clause_count=(
+                self.participant_idle_cap_clause_count
+            ),
+            participant_idle_attainable_values=(
+                self._participant_idle_attainable_values
+            ),
+            idle_threshold_dense_level_count=sum(
+                self._participant_idle_attainable_values[participant][-1]
+                for participant in self.objective_participants
+            ),
+            idle_threshold_encoded_level_count=sum(
+                len(self._idle_threshold_levels[participant])
+                for participant in self.objective_participants
+            ),
+            idle_threshold_removed_level_count=sum(
+                self._participant_idle_attainable_values[participant][-1]
+                - len(self._idle_threshold_levels[participant])
+                for participant in self.objective_participants
+            ),
+            objective_aggregate_dense_level_count=(
+                self._objective_aggregate_dense_level_count
+            ),
+            objective_aggregate_encoded_level_count=(
+                self._objective_aggregate_encoded_level_count
+            ),
+            objective_constant_soft_weight=(
+                self._objective_constant_soft_weight
+            ),
         )
         return self._artifacts
 
@@ -1392,8 +1970,8 @@ class B2BSATModel:
         for clause in artifacts.cnf.clauses:
             wcnf.append(clause)
         for tier in artifacts.objective_tiers:
-            for lit in tier.literals:
-                wcnf.append([-lit], weight=tier.scalar_weight)
+            for clause, weight in zip(tier.maxsat_clauses, tier.maxsat_weights):
+                wcnf.append(list(clause), weight=tier.scalar_weight * weight)
         return wcnf
 
     # Feasibility -------------------------------------------------------
@@ -1418,7 +1996,12 @@ class B2BSATModel:
                         cnf.append([-self.x(meeting, slot)])
 
     def _add_participant_collision(self, cnf: CNF) -> None:
-        self.enabled_constraints.append("(19) participant atMost-one per slot")
+        self.enabled_constraints.append(
+            "(19) participant atMost-one per slot; "
+            f"AMO={self.collision_amo_encoding}, "
+            f"commander_cutoff={self.collision_amo_cutoff}, "
+            f"commander_group_size={self.collision_amo_commander_group_size}"
+        )
         for meetings in self.inst.meetings_by_business:
             for slot in range(self.inst.n_total_slots):
                 lits = [
@@ -1427,7 +2010,64 @@ class B2BSATModel:
                     if (lit := self.x_or_none(meeting, slot)) is not None
                 ]
                 if len(lits) > 1:
-                    self._add_pairwise_atmost_one(cnf, lits)
+                    self._collision_amo_max_group_size = max(
+                        self._collision_amo_max_group_size,
+                        len(lits),
+                    )
+                    before = len(cnf.clauses)
+                    if (
+                        self.collision_amo_encoding == "adaptive_commander"
+                        and len(lits) >= self.collision_amo_cutoff
+                    ):
+                        self._add_commander_atmost_one(cnf, lits)
+                        self._collision_amo_commander_group_count += 1
+                    else:
+                        self._add_pairwise_atmost_one(cnf, lits)
+                        self._collision_amo_pairwise_group_count += 1
+                    self._collision_amo_clause_count += (
+                        len(cnf.clauses) - before
+                    )
+
+    def _add_commander_atmost_one(
+        self,
+        cnf: CNF,
+        lits: list[int],
+    ) -> None:
+        """Add an equisatisfiable commander AMO with groups of four.
+
+        A true input implies its group commander.  Pairwise AMO inside every
+        group and recursive AMO over the commanders then forbid two true
+        inputs.  The reverse commander-to-input implication is deliberately
+        unnecessary for an at-most-one constraint.
+        """
+
+        if len(lits) <= self.collision_amo_commander_group_size:
+            self._add_pairwise_atmost_one(cnf, lits)
+            return
+
+        commanders: list[int] = []
+        for start in range(
+            0,
+            len(lits),
+            self.collision_amo_commander_group_size,
+        ):
+            group = lits[
+                start:start + self.collision_amo_commander_group_size
+            ]
+            self._add_pairwise_atmost_one(cnf, group)
+            self._collision_amo_commander_serial += 1
+            commander = self.vpool.id(
+                (
+                    "collisionAMOCommander",
+                    self._collision_amo_commander_serial,
+                )
+            )
+            self._collision_amo_commander_variable_count += 1
+            commanders.append(commander)
+            for lit in group:
+                cnf.append([-lit, commander])
+
+        self._add_commander_atmost_one(cnf, commanders)
 
     def _add_capacity_over_meetings(self, cnf: CNF) -> None:
         self.enabled_constraints.append(
@@ -1441,79 +2081,6 @@ class B2BSATModel:
             ]
             self._add_atmost_seqcounter(cnf, lits, self.inst.n_tables)
 
-    def slot_cluster_active(self, slot: int, cluster: int) -> int:
-        return self.vpool.id(
-            ("slotClusterActive", slot, cluster)
-        )
-    def _compute_slot_clusters(self, slot: int) -> list[list[int]]:
-        """Partition meetings eligible at one slot into participant-AMO groups."""
-
-        remaining = {
-            meeting
-            for meeting in range(self.inst.n_meetings)
-            if self.x_or_none(meeting, slot) is not None
-        }
-
-        clusters: list[list[int]] = []
-
-        while remaining:
-            best: list[int] = []
-
-            for meetings in self.inst.meetings_by_business:
-                candidate = sorted(
-                    remaining.intersection(meetings)
-                )
-
-                if len(candidate) > len(best):
-                    best = candidate
-
-            if not best:
-                best = [min(remaining)]
-
-            clusters.append(best)
-            remaining.difference_update(best)
-
-        return clusters
-
-    def _add_slot_cluster_capacity(self, cnf: CNF) -> None:
-        self.enabled_constraints.append(
-            "slot-aware participant-AMO clustered table capacity"
-        )
-
-        for slot in range(self.inst.n_total_slots):
-            clusters = self._compute_slot_clusters(slot)
-            active_clusters: list[int] = []
-
-            for cluster_index, meetings in enumerate(clusters):
-                member_lits = [
-                    self.x(meeting, slot)
-                    for meeting in meetings
-                    if self.x_or_none(meeting, slot) is not None
-                ]
-
-                if not member_lits:
-                    continue
-
-                if len(member_lits) == 1:
-                    active_clusters.append(member_lits[0])
-                    continue
-
-                cluster_lit = self.slot_cluster_active(
-                    slot,
-                    cluster_index,
-                )
-
-                active_clusters.append(cluster_lit)
-
-                # Any scheduled member activates its cluster.
-                for lit in member_lits:
-                    cnf.append([-lit, cluster_lit])
-
-            self._add_atmost_seqcounter(
-                cnf,
-                active_clusters,
-                self.inst.n_tables,
-            )
     def _compute_meeting_clusters(self) -> list[list[int]]:
         if self._clusters is not None:
             return self._clusters
@@ -1691,6 +2258,8 @@ class B2BSATModel:
                     for meeting in meetings
                     if (lit := self.x_or_none(meeting, slot)) is not None
                 ]
+                if len(scheduled) == 1 and used == scheduled[0]:
+                    continue
                 for lit in scheduled:
                     cnf.append([-lit, used])
                 cnf.append([-used] + scheduled)
@@ -1701,43 +2270,98 @@ class B2BSATModel:
         if self.use_implied_2:
             self._add_implied_constraint_2(cnf)
 
-    def _build_prefix_suffix(self, cnf: CNF, participant: int) -> None:
-        if participant in self._prefix_suffix_built:
-            return
-        self._prefix_suffix_built.add(participant)
+    def _build_prefix_suffix(
+        self,
+        cnf: CNF,
+        participant: int,
+        *,
+        need_prefix: bool = True,
+        need_suffix: bool = True,
+    ) -> None:
         total_slots = self.inst.n_total_slots
         if total_slots == 0:
             return
 
-        for slot in range(total_slots):
-            prefix = self.prefix_used(participant, slot)
-            used = self.used_or_none(participant, slot)
-            if slot == 0:
-                if used is None:
-                    cnf.append([-prefix])
-                else:
-                    self._add_equiv(cnf, prefix, used)
-            else:
-                previous = self.prefix_used(participant, slot - 1)
-                if used is None:
-                    self._add_equiv(cnf, prefix, previous)
-                else:
-                    self._add_equiv_or(cnf, prefix, previous, used)
+        demand_driven = "demand_driven" in self.compact_encoding_features
+        if need_prefix and participant not in self._prefix_built:
+            self._prefix_built.add(participant)
+            previous: int | None = None
+            for slot in range(total_slots):
+                used = self.used_or_none(participant, slot)
+                if demand_driven:
+                    if used is None:
+                        current = previous
+                        if current is not None:
+                            self._prefix_alias_count += 1
+                    elif previous is None:
+                        current = used
+                        self._prefix_alias_count += 1
+                    else:
+                        current = self.prefix_used(participant, slot)
+                        self._add_equiv_or(cnf, current, previous, used)
+                    self._prefix_states[participant, slot] = current
+                    previous = current
+                    continue
 
-        for slot in range(total_slots - 1, -1, -1):
-            suffix = self.suffix_used(participant, slot)
-            used = self.used_or_none(participant, slot)
-            if slot == total_slots - 1:
-                if used is None:
-                    cnf.append([-suffix])
+                current = self.prefix_used(participant, slot)
+                self._prefix_states[participant, slot] = current
+                if slot == 0:
+                    if used is None:
+                        cnf.append([-current])
+                    else:
+                        self._add_equiv(cnf, current, used)
                 else:
-                    self._add_equiv(cnf, suffix, used)
-            else:
-                following = self.suffix_used(participant, slot + 1)
-                if used is None:
-                    self._add_equiv(cnf, suffix, following)
+                    assert previous is not None
+                    if used is None:
+                        self._add_equiv(cnf, current, previous)
+                    else:
+                        self._add_equiv_or(cnf, current, previous, used)
+                previous = current
+
+        if need_suffix and participant not in self._suffix_built:
+            self._suffix_built.add(participant)
+            following: int | None = None
+            for slot in range(total_slots - 1, -1, -1):
+                used = self.used_or_none(participant, slot)
+                if demand_driven:
+                    if used is None:
+                        current = following
+                        if current is not None:
+                            self._suffix_alias_count += 1
+                    elif following is None:
+                        current = used
+                        self._suffix_alias_count += 1
+                    else:
+                        current = self.suffix_used(participant, slot)
+                        self._add_equiv_or(cnf, current, used, following)
+                    self._suffix_states[participant, slot] = current
+                    following = current
+                    continue
+
+                current = self.suffix_used(participant, slot)
+                self._suffix_states[participant, slot] = current
+                if slot == total_slots - 1:
+                    if used is None:
+                        cnf.append([-current])
+                    else:
+                        self._add_equiv(cnf, current, used)
                 else:
-                    self._add_equiv_or(cnf, suffix, used, following)
+                    assert following is not None
+                    if used is None:
+                        self._add_equiv(cnf, current, following)
+                    else:
+                        self._add_equiv_or(cnf, current, used, following)
+                following = current
+
+    def _prefix_state(self, participant: int, slot: int) -> int | None:
+        if slot < 0:
+            return None
+        return self._prefix_states.get((participant, slot))
+
+    def _suffix_state(self, participant: int, slot: int) -> int | None:
+        if slot >= self.inst.n_total_slots:
+            return None
+        return self._suffix_states.get((participant, slot))
 
     def _participant_span_upper_bound(self, participant: int) -> int:
         meetings = self.inst.n_meetings_business[participant]
@@ -1750,6 +2374,228 @@ class B2BSATModel:
             return 0
         return max(0, possible[-1] - possible[0] + 1 - meetings)
 
+    def _objective_true_literal(self, cnf: CNF) -> int:
+        """Return one shared literal fixed to true for constant soft costs."""
+
+        if self._constant_true_lit is None:
+            self._constant_true_lit = self.vpool.id(("objectiveConstantTrue",))
+            cnf.append([self._constant_true_lit])
+        return self._constant_true_lit
+
+    def _idle_indicator_at_level(
+        self,
+        participant: int,
+        level: int,
+    ) -> int | bool:
+        """Represent ``I_p >= level`` by a constant or retained threshold."""
+
+        values = self._participant_idle_attainable_values[participant]
+        if level <= values[0]:
+            return True
+        if level > values[-1]:
+            return False
+        index = bisect_right(values, level - 1)
+        retained_level = values[index]
+        return self._idle_threshold_lit_by_level[participant][retained_level]
+
+    def _aggregate_indicator(
+        self,
+        cnf: CNF,
+        signature: tuple[int | bool, ...],
+        *,
+        kind: str,
+    ) -> int | bool:
+        """Build an exact OR/AND of threshold indicators with constant folding."""
+
+        if kind not in {"or", "and"}:
+            raise ValueError(f"unknown aggregate kind={kind!r}")
+        if kind == "or":
+            if any(value is True for value in signature):
+                return True
+            literals = tuple(
+                sorted({int(value) for value in signature if value is not False})
+            )
+            if not literals:
+                return False
+            if len(literals) == 1:
+                return literals[0]
+            cache = self._aggregate_or_cache
+        else:
+            if any(value is False for value in signature):
+                return False
+            literals = tuple(
+                sorted({int(value) for value in signature if value is not True})
+            )
+            if not literals:
+                return True
+            if len(literals) == 1:
+                return literals[0]
+            cache = self._aggregate_and_cache
+
+        cached = cache.get(literals)
+        if cached is not None:
+            return cached
+        output = self.vpool.id(("idleAggregate", kind, literals))
+        if kind == "or":
+            for literal in literals:
+                cnf.append([-literal, output])
+            cnf.append([-output, *literals])
+        else:
+            for literal in literals:
+                cnf.append([-output, literal])
+            cnf.append([output, *[-literal for literal in literals]])
+        cache[literals] = output
+        return output
+
+    def _penalty_for_indicator(
+        self,
+        cnf: CNF,
+        indicator: int | bool,
+        weight: int,
+    ) -> tuple[tuple[int, ...], int] | None:
+        """Return a soft clause whose violation charges a true indicator."""
+
+        if weight <= 0 or indicator is False:
+            return None
+        if indicator is True:
+            self._objective_constant_soft_weight += weight
+            return ((-self._objective_true_literal(cnf),), weight)
+        return ((-int(indicator),), weight)
+
+    def _idle_cost_penalties(
+        self,
+        cnf: CNF,
+        *,
+        squared: bool,
+    ) -> tuple[tuple[tuple[int, ...], ...], tuple[int, ...], int]:
+        """Compile total or squared waiting from compressed threshold jumps."""
+
+        penalties: list[tuple[int, ...]] = []
+        weights: list[int] = []
+        upper_bound = 0
+        constant = 0
+        for participant in self.objective_participants:
+            values = self._participant_idle_attainable_values[participant]
+            upper_bound += values[-1] ** 2 if squared else values[-1]
+            constant += values[0] ** 2 if squared else values[0]
+            for previous, level in zip(values, values[1:]):
+                literal = self._idle_threshold_lit_by_level[participant][level]
+                weight = (
+                    level * level - previous * previous
+                    if squared
+                    else level - previous
+                )
+                penalties.append((-literal,))
+                weights.append(weight)
+        if constant:
+            self._objective_constant_soft_weight += constant
+            penalties.insert(0, (-self._objective_true_literal(cnf),))
+            weights.insert(0, constant)
+        return tuple(penalties), tuple(weights), upper_bound
+
+    def _compressed_idle_extremes(
+        self,
+        cnf: CNF,
+        *,
+        include_range: bool,
+        family: str = "idle_slots",
+    ) -> tuple[
+        tuple[tuple[int, ...], ...],
+        tuple[int, ...],
+        tuple[tuple[int, ...], ...],
+        tuple[int, ...],
+    ]:
+        """Compile maximum and, optionally, range over attainable levels."""
+
+        maximum_upper = max(
+            (
+                self._participant_idle_attainable_values[participant][-1]
+                for participant in self.objective_participants
+            ),
+            default=0,
+        )
+        self._objective_aggregate_dense_level_count = max(
+            self._objective_aggregate_dense_level_count,
+            maximum_upper,
+        )
+        if maximum_upper == 0 or not self.objective_participants:
+            return (), (), (), ()
+
+        runs: list[tuple[tuple[int | bool, ...], int]] = []
+        previous_signature: tuple[int | bool, ...] | None = None
+        run_weight = 0
+        for level in range(1, maximum_upper + 1):
+            signature = tuple(
+                self._idle_indicator_at_level(participant, level)
+                for participant in self.objective_participants
+            )
+            if signature == previous_signature:
+                run_weight += 1
+            else:
+                if previous_signature is not None:
+                    runs.append((previous_signature, run_weight))
+                previous_signature = signature
+                run_weight = 1
+        assert previous_signature is not None
+        runs.append((previous_signature, run_weight))
+        self._objective_aggregate_encoded_level_count = max(
+            self._objective_aggregate_encoded_level_count,
+            len(runs),
+        )
+
+        maximum_clauses: list[tuple[int, ...]] = []
+        maximum_weights: list[int] = []
+        range_clauses: list[tuple[int, ...]] = []
+        range_weights: list[int] = []
+
+        for signature, weight in runs:
+            maximum = self._aggregate_indicator(cnf, signature, kind="or")
+            maximum_penalty = self._penalty_for_indicator(cnf, maximum, weight)
+            if maximum_penalty is not None:
+                clause, penalty_weight = maximum_penalty
+                maximum_clauses.append(clause)
+                maximum_weights.append(penalty_weight)
+
+            if not include_range:
+                continue
+            minimum = self._aggregate_indicator(cnf, signature, kind="and")
+            same_indicator = (
+                isinstance(maximum, int)
+                and not isinstance(maximum, bool)
+                and isinstance(minimum, int)
+                and not isinstance(minimum, bool)
+                and maximum == minimum
+            ) or (
+                isinstance(maximum, bool)
+                and isinstance(minimum, bool)
+                and maximum is minimum
+            )
+            if maximum is False or minimum is True or same_indicator:
+                continue
+            if maximum is True and minimum is False:
+                self._objective_constant_soft_weight += weight
+                clause = (-self._objective_true_literal(cnf),)
+            elif maximum is True:
+                clause = (int(minimum),)
+            elif minimum is False:
+                clause = (-int(maximum),)
+            else:
+                clause = (-int(maximum), int(minimum))
+            range_clauses.append(clause)
+            range_weights.append(weight)
+
+        self._range_max_penalty_clauses[family] = list(maximum_clauses)
+        self._range_max_penalty_weights[family] = list(maximum_weights)
+        if include_range:
+            self._direct_range_soft_clauses[family] = list(range_clauses)
+            self._direct_range_soft_weights[family] = list(range_weights)
+        return (
+            tuple(maximum_clauses),
+            tuple(maximum_weights),
+            tuple(range_clauses),
+            tuple(range_weights),
+        )
+
     def _add_span_break_thresholds(self, cnf: CNF) -> list[list[int]]:
         """Encode ``B(p)>=k`` directly for objective participants in P*."""
 
@@ -1758,6 +2604,7 @@ class B2BSATModel:
         )
         self._channel_used_slots(cnf)
         thresholds_by_participant: list[list[int]] = []
+        profiles = list(self._participant_idle_attainable_values)
         objective_participants = set(self.objective_participants)
 
         for participant in range(self.inst.n_business):
@@ -1771,27 +2618,47 @@ class B2BSATModel:
             # Skip their prefix/suffix variables entirely to keep the encoding compact.
             if participant not in objective_participants or not possible_slots:
                 thresholds_by_participant.append([])
+                profiles[participant] = (0,)
                 continue
 
-            self._build_prefix_suffix(cnf, participant)
+            self._build_prefix_suffix(
+                cnf,
+                participant,
+                need_prefix=True,
+                need_suffix=True,
+            )
             first_lits: dict[int, int] = {}
             for slot in possible_slots:
                 used = self.used_or_none(participant, slot)
                 assert used is not None
-                first = self.first_used(participant, slot)
-                first_lits[slot] = first
-                if slot == 0:
-                    self._add_equiv(cnf, first, used)
+                previous = self._prefix_state(participant, slot - 1)
+                if (
+                    "demand_driven" in self.compact_encoding_features
+                    and previous is None
+                ):
+                    first = used
+                    self._first_alias_count += 1
                 else:
-                    previous = self.prefix_used(participant, slot - 1)
-                    # first <-> used AND NOT previous-prefix.
-                    cnf.append([-first, used])
-                    cnf.append([-first, -previous])
-                    cnf.append([-used, previous, first])
+                    first = self.first_used(participant, slot)
+                    if previous is None:
+                        self._add_equiv(cnf, first, used)
+                    else:
+                        # first <-> used AND NOT previous-prefix.
+                        cnf.append([-first, used])
+                        cnf.append([-first, -previous])
+                        cnf.append([-used, previous, first])
+                first_lits[slot] = first
 
             upper = self._participant_span_upper_bound(participant)
+            if "attainable_values" in self.compact_encoding_features:
+                values = profiles[participant]
+                levels = values[1:]
+            else:
+                values = tuple(range(upper + 1))
+                profiles[participant] = values
+                levels = values[1:]
             thresholds: list[int] = []
-            for amount in range(1, upper + 1):
+            for amount in levels:
                 threshold = self.break_threshold(participant, amount)
                 thresholds.append(threshold)
                 for first_slot, first in first_lits.items():
@@ -1799,16 +2666,58 @@ class B2BSATModel:
                     if target >= self.inst.n_total_slots:
                         cnf.append([-first, -threshold])
                         continue
-                    suffix = self.suffix_used(participant, target)
+                    suffix = self._suffix_state(participant, target)
+                    if suffix is None:
+                        cnf.append([-first, -threshold])
+                        continue
                     # first -> (threshold <-> suffix[target]).
                     cnf.append([-first, -threshold, suffix])
                     cnf.append([-first, threshold, -suffix])
 
             for index in range(1, len(thresholds)):
                 cnf.append([-thresholds[index], thresholds[index - 1]])
+            self._idle_threshold_levels[participant] = tuple(levels)
+            self._idle_threshold_lit_by_level[participant] = dict(
+                zip(levels, thresholds)
+            )
             thresholds_by_participant.append(thresholds)
 
+        self._participant_idle_attainable_values = tuple(profiles)
         return thresholds_by_participant
+
+    def _add_direct_idle_sum_cost(self, cnf: CNF) -> None:
+        """Create one soft clause for each possible internal idle slot.
+
+        For participant ``p`` and slot ``t``, the clause is violated exactly
+        when ``p`` has an earlier meeting, no meeting at ``t``, and a later
+        meeting.  This is the idle-slot definition itself, so the total number
+        of violated clauses is the total internal waiting time.  No unary
+        objective thresholds or first-slot variables are required.
+        """
+
+        self.enabled_constraints.append(
+            "direct soft clauses for total internal idle slots"
+        )
+        self._channel_used_slots(cnf)
+        for participant in self.objective_participants:
+            self._build_prefix_suffix(
+                cnf,
+                participant,
+                need_prefix=True,
+                need_suffix=True,
+            )
+            for slot in range(1, self.inst.n_total_slots - 1):
+                prefix = self._prefix_state(participant, slot - 1)
+                suffix = self._suffix_state(participant, slot + 1)
+                if prefix is None or suffix is None:
+                    continue
+                used = self.used_or_none(participant, slot)
+                clause = (
+                    (-prefix, -suffix)
+                    if used is None
+                    else (-prefix, used, -suffix)
+                )
+                self._direct_idle_sum_clauses.append(clause)
 
     def _add_exact_cardinality_thresholds(
         self,
@@ -1819,93 +2728,100 @@ class B2BSATModel:
         family: str,
         upper_bound: int,
     ) -> list[int]:
-        """Shared exact unary counter.
+        """Encode exact unary literals ``[sum(literals) >= k]``."""
 
-        Returns threshold[k-1] <-> sum(literals) >= k.
-        """
+        thresholds: list[int] = []
+        for amount in range(1, min(upper_bound, len(literals)) + 1):
+            if family != "break_groups":
+                raise ValueError(f"Unsupported threshold family={family!r}")
+            threshold = self.break_group_threshold(participant, amount)
+            thresholds.append(threshold)
 
-        if family != "break_groups":
-            raise ValueError(f"Unsupported threshold family={family!r}")
+            at_least = CardEnc.atleast(
+                lits=literals,
+                bound=amount,
+                vpool=self.vpool,
+                encoding=EncType.seqcounter,
+            )
+            for clause in at_least.clauses:
+                cnf.append([-threshold, *clause])
 
-        n = len(literals)
-        K = min(upper_bound, n)
+            at_most = CardEnc.atmost(
+                lits=literals,
+                bound=amount - 1,
+                vpool=self.vpool,
+                encoding=EncType.seqcounter,
+            )
+            for clause in at_most.clauses:
+                cnf.append([threshold, *clause])
 
-        if K == 0:
+        for index in range(1, len(thresholds)):
+            cnf.append([-thresholds[index], thresholds[index - 1]])
+        return thresholds
+
+    def _add_shared_exact_cardinality_thresholds(
+        self,
+        cnf: CNF,
+        literals: list[int],
+        *,
+        participant: int,
+        upper_bound: int,
+    ) -> list[int]:
+        """Encode every exact ``sum(literals) >= k`` output in one DP."""
+
+        if upper_bound <= 0 or not literals:
             return []
-
+        bound = min(upper_bound, len(literals))
         previous: dict[int, int] = {}
-
-        for i, x in enumerate(literals, start=1):
+        for index, literal in enumerate(literals, start=1):
             current: dict[int, int] = {}
-
-            for k in range(1, min(i, K) + 1):
-
-                # Final row reuses the public threshold variable.
-                if i == n:
-                    out = self.break_group_threshold(participant, k)
-                else:
-                    out = self.vpool.id(
-                        ("breakGroupSharedCounter", participant, i, k)
-                    )
-
-                current[k] = out
-
-                # S[i,1] <-> S[i-1,1] OR x
-                if k == 1:
-                    if i == 1:
-                        self._add_equiv(cnf, out, x)
+            for amount in range(1, min(index, bound) + 1):
+                state = self.vpool.id(
+                    ("sharedBreakCounter", participant, index, amount)
+                )
+                self._shared_counter_state_count += 1
+                same_amount = previous.get(amount)  # false when absent
+                if amount == 1:
+                    # state <-> same_amount OR literal
+                    if same_amount is not None:
+                        cnf.append([-same_amount, state])
+                        cnf.append([-literal, state])
+                        cnf.append([-state, same_amount, literal])
                     else:
-                        self._add_equiv_or(
-                            cnf,
-                            out,
-                            previous[1],
-                            x,
-                        )
-                    continue
-
-                if k not in previous:
-                    lower = previous[k - 1]
-
-                    cnf.append([-out, lower])
-                    cnf.append([-out, x])
-                    cnf.append([-lower, -x, out])
-                    continue
-
-                same = previous[k]
-                lower = previous[k - 1]
-
-                # out <-> same OR (lower AND x)
-                #
-                # same -> out
-                cnf.append([-same, out])
-
-                # lower AND x -> out
-                cnf.append([-lower, -x, out])
-
-                # out -> same OR lower
-                cnf.append([-out, same, lower])
-
-                # out -> same OR x
-                cnf.append([-out, same, x])
-
+                        cnf.append([-literal, state])
+                        cnf.append([-state, literal])
+                else:
+                    one_less = previous[amount - 1]
+                    # state <-> same_amount OR (literal AND one_less)
+                    if same_amount is not None:
+                        cnf.append([-same_amount, state])
+                    cnf.append([-literal, -one_less, state])
+                    cnf.append(
+                        [-state, literal]
+                        if same_amount is None
+                        else [-state, same_amount, literal]
+                    )
+                    cnf.append(
+                        [-state, one_less]
+                        if same_amount is None
+                        else [-state, same_amount, one_less]
+                    )
+                current[amount] = state
             previous = current
 
-        thresholds = [previous[k] for k in range(1, K + 1)]
-
-        # Redundant but useful propagation.
-        for k in range(1, len(thresholds)):
-            cnf.append([-thresholds[k], thresholds[k - 1]])
-
-        return thresholds
+        return [previous[amount] for amount in range(1, bound + 1)]
 
     def _add_break_group_thresholds(
         self,
         cnf: CNF,
+        *,
+        include_thresholds: bool = True,
     ) -> tuple[list[list[int]], list[list[int]]]:
         """Encode exact maximal internal idle-block counts for every participant."""
 
         self.enabled_constraints.append(
-            "exact break-group ends and unary break-group thresholds"
+            "exact break-group ends"
+            + (" and unary break-group thresholds" if include_thresholds else "")
         )
         self._channel_used_slots(cnf)
         ends_by_participant: list[list[int]] = []
@@ -1917,7 +2833,17 @@ class B2BSATModel:
                 thresholds_by_participant.append([])
                 continue
 
-            self._build_prefix_suffix(cnf, participant)
+            self._build_prefix_suffix(
+                cnf,
+                participant,
+                need_prefix=True,
+                # Preserve the published reference encoding exactly.  Removing
+                # the unused suffix chain is deliberately isolated as part of
+                # the demand-driven compact factor.
+                need_suffix=(
+                    "demand_driven" not in self.compact_encoding_features
+                ),
+            )
             possible = {
                 slot
                 for slot in range(self.inst.n_total_slots)
@@ -1930,7 +2856,11 @@ class B2BSATModel:
                     continue
                 end = self.break_group_end(participant, slot)
                 current_used = self.used_or_none(participant, slot)
-                prefix = self.prefix_used(participant, slot - 1)
+                prefix = self._prefix_state(participant, slot - 1)
+                if prefix is None:
+                    raise AssertionError(
+                        "break-end candidate has no earlier prefix support"
+                    )
 
                 # end <-> next_used AND NOT current_used AND prefix.
                 cnf.append([-end, next_used])
@@ -1943,13 +2873,33 @@ class B2BSATModel:
                 cnf.append(reverse)
                 ends.append(end)
 
-            thresholds = self._add_exact_cardinality_thresholds(
-                cnf,
-                ends,
-                participant=participant,
-                family="break_groups",
-                upper_bound=self.inst.max_breaks_per_participant,
-            )
+            thresholds: list[int] = []
+            if include_thresholds:
+                if "shared_counter" in self.compact_encoding_features:
+                    meeting_count = len(meetings)
+                    participant_bound = max(
+                        0,
+                        min(
+                            self.inst.max_breaks_per_participant,
+                            meeting_count - 1,
+                            self.inst.n_total_slots - meeting_count,
+                            len(ends),
+                        ),
+                    )
+                    thresholds = self._add_shared_exact_cardinality_thresholds(
+                        cnf,
+                        ends,
+                        participant=participant,
+                        upper_bound=participant_bound,
+                    )
+                else:
+                    thresholds = self._add_exact_cardinality_thresholds(
+                        cnf,
+                        ends,
+                        participant=participant,
+                        family="break_groups",
+                        upper_bound=self.inst.max_breaks_per_participant,
+                    )
             ends_by_participant.append(ends)
             thresholds_by_participant.append(thresholds)
 
@@ -2032,8 +2982,28 @@ class B2BSATModel:
     ) -> list[int]:
         """Encode the exact max--min range of a unary threshold family."""
 
+        self._range_max_lits[family] = []
         if len(participants) <= 1:
             return []
+
+        if (
+            family == "idle_slots"
+            and "attainable_values" in self.compact_encoding_features
+        ):
+            self._compressed_idle_extremes(
+                cnf,
+                include_range=True,
+                family=family,
+            )
+            return []
+
+        direct_soft = (
+            "direct_range_soft" in self.compact_encoding_features
+            and family == "idle_slots"
+        )
+        if direct_soft:
+            self._direct_range_soft_clauses[family] = []
+            self._direct_range_soft_weights[family] = []
 
         global_upper = max(
             (
@@ -2049,10 +3019,8 @@ class B2BSATModel:
         for amount in range(1, global_upper + 1):
             max_lit = self.range_max(family, amount)
             min_lit = self.range_min(family, amount)
-            gap_lit = self.range_difference(family, amount)
             max_lits.append(max_lit)
             min_lits.append(min_lit)
-            gap_lits.append(gap_lit)
 
             present = [
                 thresholds_by_participant[participant][amount - 1]
@@ -2074,14 +3042,23 @@ class B2BSATModel:
                     cnf.append([-min_lit, threshold])
                 cnf.append([min_lit] + [-threshold for threshold in present])
 
-            cnf.append([-gap_lit, max_lit])
-            cnf.append([-gap_lit, -min_lit])
-            cnf.append([-max_lit, min_lit, gap_lit])
+            if direct_soft:
+                self._direct_range_soft_clauses[family].append(
+                    (-max_lit, min_lit)
+                )
+                self._direct_range_soft_weights[family].append(1)
+            else:
+                gap_lit = self.range_difference(family, amount)
+                gap_lits.append(gap_lit)
+                cnf.append([-gap_lit, max_lit])
+                cnf.append([-gap_lit, -min_lit])
+                cnf.append([-max_lit, min_lit, gap_lit])
 
         for index in range(1, len(max_lits)):
             cnf.append([-max_lits[index], max_lits[index - 1]])
             cnf.append([-min_lits[index], min_lits[index - 1]])
 
+        self._range_max_lits[family] = max_lits
         return gap_lits
 
     def _build_objective_family(
@@ -2098,41 +3075,166 @@ class B2BSATModel:
     ]:
         """Build only the objective components required by ``objective_mode``."""
 
-        needs_idle = self.objective_mode in {"ir", "ir_is", "bg_ir_is"}
-        needs_groups = self.objective_mode in {"bg_d2", "bg_ir_is"}
+        needs_idle = self.objective_mode in {
+            "ir",
+            "ir_is",
+            "ir_im_is",
+            "ir_im_isq",
+            "bg_ir_is",
+            "is",
+            "isq",
+            "im_is",
+        }
+        needs_groups = self.objective_mode in {
+            "bg_d2",
+            "bg_dinf",
+            "bg_ir_is",
+        }
+        use_certified_bg = (
+            self.objective_mode == "bg_d2"
+            and "certified_bg" in self.compact_encoding_features
+            and self.zero_break_certificate_participant is not None
+        )
+        if (
+            self.objective_mode == "bg_d2"
+            and "certified_bg" in self.compact_encoding_features
+        ):
+            self.zero_break_branch = (
+                "certified" if use_certified_bg else "general_fallback"
+            )
 
         idle_thresholds = [[] for _ in range(self.inst.n_business)]
         idle_range_lits: list[int] = []
         if needs_idle:
-            idle_thresholds = self._add_span_break_thresholds(cnf)
-            idle_range_lits = self._add_gap_objective(cnf, idle_thresholds)
+            if (
+                self.objective_mode == "is"
+                and "attainable_values" in self.compact_encoding_features
+            ):
+                self._add_direct_idle_sum_cost(cnf)
+            else:
+                idle_thresholds = self._add_span_break_thresholds(cnf)
+            if self.objective_mode in {
+                "ir",
+                "ir_is",
+                "ir_im_is",
+                "ir_im_isq",
+                "bg_ir_is",
+            }:
+                idle_range_lits = self._add_gap_objective(cnf, idle_thresholds)
+
+            if self.participant_idle_cap_rule == "interpolated_bounds":
+                for participant in self.objective_participants:
+                    cap = self.participant_idle_caps[participant]
+                    indicator = self._idle_indicator_at_level(
+                        participant,
+                        cap + 1,
+                    )
+                    if indicator is True:
+                        cnf.append([])
+                        self.participant_idle_cap_clause_count += 1
+                    elif indicator is not False:
+                        cnf.append([-int(indicator)])
+                        self.participant_idle_cap_clause_count += 1
+                alpha = self.participant_idle_cap_alpha
+                self.enabled_constraints.append(
+                    "participant idle caps I_p <= floor(LB_p + "
+                    f"{alpha.numerator}/{alpha.denominator}(UB_p-LB_p))"
+                )
 
         group_ends = [[] for _ in range(self.inst.n_business)]
         group_thresholds = [[] for _ in range(self.inst.n_business)]
         group_range_lits: list[int] = []
         if needs_groups:
-            group_ends, group_thresholds = self._add_break_group_thresholds(cnf)
+            group_ends, group_thresholds = self._add_break_group_thresholds(
+                cnf,
+                include_thresholds=(
+                    not use_certified_bg
+                    and self.objective_mode != "bg_dinf"
+                ),
+            )
 
         idle_sum_lits = [
             literal
             for participant in self.objective_participants
             for literal in idle_thresholds[participant]
         ]
+        use_direct_group_cost = (
+            use_certified_bg or self.objective_mode == "bg_dinf"
+        )
         group_sum_lits = [
             literal
-            for participant_thresholds in group_thresholds
-            for literal in participant_thresholds
+            for participant_values in (
+                group_ends if use_direct_group_cost else group_thresholds
+            )
+            for literal in participant_values
         ]
+        idle_range_soft_clauses = tuple(
+            self._direct_range_soft_clauses.get("idle_slots", ())
+        )
+        idle_range_soft_weights = tuple(
+            self._direct_range_soft_weights.get(
+                "idle_slots",
+                (1,) * len(idle_range_soft_clauses),
+            )
+        )
+        use_attainable_values = (
+            "attainable_values" in self.compact_encoding_features
+        )
+        idle_sum_penalties: tuple[tuple[int, ...], ...] = ()
+        idle_sum_weights: tuple[int, ...] = ()
+        idle_sum_upper = len(idle_sum_lits)
+        squared_idle_penalties: tuple[tuple[int, ...], ...] = ()
+        squared_idle_weights: tuple[int, ...] = ()
+        squared_idle_upper = sum(
+            len(idle_thresholds[participant]) ** 2
+            for participant in self.objective_participants
+        )
+        if use_attainable_values and self.objective_mode == "is":
+            idle_sum_penalties = tuple(self._direct_idle_sum_clauses)
+            idle_sum_weights = (1,) * len(idle_sum_penalties)
+            idle_sum_upper = sum(
+                self._participant_idle_attainable_values[participant][-1]
+                for participant in self.objective_participants
+            )
+        elif use_attainable_values and self.objective_mode in {
+            "ir_is",
+            "ir_im_is",
+            "bg_ir_is",
+            "im_is",
+        }:
+            (
+                idle_sum_penalties,
+                idle_sum_weights,
+                idle_sum_upper,
+            ) = self._idle_cost_penalties(cnf, squared=False)
+        if use_attainable_values and self.objective_mode in {
+            "isq",
+            "ir_im_isq",
+        }:
+            (
+                squared_idle_penalties,
+                squared_idle_weights,
+                squared_idle_upper,
+            ) = self._idle_cost_penalties(cnf, squared=True)
 
         if self.objective_mode == "bg_d2":
-            group_range_lits = self._add_exact_range(
-                cnf,
-                group_thresholds,
-                participants=tuple(range(self.inst.n_business)),
-                family="break_groups",
-            )
-            self._add_atmost_seqcounter(cnf, group_range_lits, 2)
-            self.enabled_constraints.append("historical hard cap Delta_G <= 2")
+            if use_certified_bg:
+                for participant_ends in group_ends:
+                    self._add_atmost_seqcounter(cnf, participant_ends, 2)
+                self.enabled_constraints.append(
+                    "certified zero-break BG-d2: per-participant G_p <= 2"
+                )
+            else:
+                group_range_lits = self._add_exact_range(
+                    cnf,
+                    group_thresholds,
+                    participants=tuple(range(self.inst.n_business)),
+                    family="break_groups",
+                )
+                self._add_atmost_seqcounter(cnf, group_range_lits, 2)
+                self.enabled_constraints.append(
+                    "historical hard cap Delta_G <= 2"
+                )
             tiers = (
                 ObjectiveTier(
                     "total_break_groups",
@@ -2141,27 +3243,269 @@ class B2BSATModel:
                     1,
                 ),
             )
-            name = "total_break_groups_subject_to_range_at_most_2"
+            name = (
+                "total_break_groups_subject_to_certified_individual_cap_2"
+                if use_certified_bg
+                else "total_break_groups_subject_to_range_at_most_2"
+            )
+        elif self.objective_mode == "bg_dinf":
+            tiers = (
+                ObjectiveTier(
+                    "total_break_groups",
+                    tuple(group_sum_lits),
+                    len(group_sum_lits),
+                    1,
+                ),
+            )
+            name = "total_break_groups_without_homogeneity"
+        elif self.objective_mode == "is":
+            tiers = (
+                ObjectiveTier(
+                    "total_internal_idle_slots",
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    idle_sum_upper,
+                    1,
+                    penalty_clauses=idle_sum_penalties,
+                    penalty_weights=idle_sum_weights,
+                ),
+            )
+            name = "total_internal_idle_slots"
+        elif self.objective_mode == "isq":
+            if use_attainable_values:
+                weights = squared_idle_weights
+                penalties = squared_idle_penalties
+            else:
+                weights = tuple(
+                    2 * level - 1
+                    for participant in self.objective_participants
+                    for level in range(
+                        1,
+                        len(idle_thresholds[participant]) + 1,
+                    )
+                )
+                penalties = ()
+            tiers = (
+                ObjectiveTier(
+                    "squared_internal_idle_slots",
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    squared_idle_upper,
+                    1,
+                    penalty_clauses=penalties,
+                    penalty_weights=weights,
+                ),
+            )
+            name = "sum_squared_internal_idle_slots"
+        elif self.objective_mode in {"im_is", "ir_im_is", "ir_im_isq"}:
+            if use_attainable_values:
+                maximum_upper = max(
+                    (
+                        min(
+                            self._participant_idle_attainable_values[
+                                participant
+                            ][-1],
+                            self.participant_idle_caps[participant],
+                        )
+                        if self.participant_idle_cap_rule
+                        == "interpolated_bounds"
+                        else self._participant_idle_attainable_values[
+                            participant
+                        ][-1]
+                        for participant in self.objective_participants
+                    ),
+                    default=0,
+                )
+                if "idle_slots" not in self._range_max_penalty_clauses:
+                    self._compressed_idle_extremes(
+                        cnf,
+                        include_range=False,
+                    )
+                maximum_lits: list[int] = []
+                maximum_penalties = tuple(
+                    self._range_max_penalty_clauses.get("idle_slots", ())
+                )
+                maximum_penalty_weights = tuple(
+                    self._range_max_penalty_weights.get("idle_slots", ())
+                )
+            else:
+                maximum_upper = max(
+                    (
+                        self.participant_idle_caps[participant]
+                        if self.participant_idle_cap_rule
+                        == "interpolated_bounds"
+                        else len(idle_thresholds[participant])
+                        for participant in self.objective_participants
+                    ),
+                    default=0,
+                )
+                maximum_penalties = ()
+                maximum_penalty_weights = ()
+
+            if self.objective_mode == "im_is" and not use_attainable_values:
+                maximum_lits = []
+                structural_maximum_upper = max(
+                    (len(idle_thresholds[participant])
+                     for participant in self.objective_participants),
+                    default=0,
+                )
+                for level in range(structural_maximum_upper):
+                    inputs = [
+                        idle_thresholds[participant][level]
+                        for participant in self.objective_participants
+                        if level < len(idle_thresholds[participant])
+                    ]
+                    out = self.vpool.id(("idle_maximum", level + 1))
+                    for literal in inputs:
+                        cnf.append([-literal, out])
+                    cnf.append([-out] + inputs)
+                    maximum_lits.append(out)
+            elif not use_attainable_values:
+                # IR already needs exactly these max-threshold states. Sharing
+                # them avoids a duplicate maximum family in the compact model.
+                maximum_lits = list(self._range_max_lits.get("idle_slots", ()))
+                if not maximum_lits and self.objective_participants:
+                    structural_maximum_upper = max(
+                        (len(idle_thresholds[participant])
+                         for participant in self.objective_participants),
+                        default=0,
+                    )
+                    for level in range(structural_maximum_upper):
+                        inputs = [
+                            idle_thresholds[participant][level]
+                            for participant in self.objective_participants
+                            if level < len(idle_thresholds[participant])
+                        ]
+                        out = self.vpool.id(("idle_maximum", level + 1))
+                        for literal in inputs:
+                            cnf.append([-literal, out])
+                        cnf.append([-out] + inputs)
+                        maximum_lits.append(out)
+
+            if not use_attainable_values:
+                idle_sum_upper = sum(
+                    self.participant_idle_caps[participant]
+                    if self.participant_idle_cap_rule == "interpolated_bounds"
+                    else len(idle_thresholds[participant])
+                    for participant in self.objective_participants
+                )
+                squared_idle_upper = sum(
+                    (
+                        self.participant_idle_caps[participant]
+                        if self.participant_idle_cap_rule
+                        == "interpolated_bounds"
+                        else len(idle_thresholds[participant])
+                    )
+                    ** 2
+                    for participant in self.objective_participants
+                )
+            last_tier_upper = (
+                squared_idle_upper
+                if self.objective_mode == "ir_im_isq"
+                else idle_sum_upper
+            )
+            maximum_weight = last_tier_upper + 1
+            maximum_tier = ObjectiveTier(
+                "maximum_internal_idle_slots",
+                tuple() if use_attainable_values else tuple(maximum_lits),
+                maximum_upper,
+                maximum_weight,
+                penalty_clauses=maximum_penalties,
+                penalty_weights=maximum_penalty_weights,
+            )
+            if self.objective_mode == "ir_im_isq":
+                if use_attainable_values:
+                    squared_weights = squared_idle_weights
+                    squared_penalties = squared_idle_penalties
+                else:
+                    squared_weights = tuple(
+                        2 * level - 1
+                        for participant in self.objective_participants
+                        for level in range(
+                            1,
+                            len(idle_thresholds[participant]) + 1,
+                        )
+                    )
+                    squared_penalties = ()
+                last_tier = ObjectiveTier(
+                    "squared_internal_idle_slots",
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    squared_idle_upper,
+                    1,
+                    penalty_clauses=squared_penalties,
+                    penalty_weights=squared_weights,
+                )
+            else:
+                last_tier = ObjectiveTier(
+                    "total_internal_idle_slots",
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    idle_sum_upper,
+                    1,
+                    penalty_clauses=idle_sum_penalties,
+                    penalty_weights=idle_sum_weights,
+                )
+            if self.objective_mode == "im_is":
+                tiers = (maximum_tier, last_tier)
+                name = "lexicographic_maximum_idle_then_idle_sum"
+            else:
+                # One unit of range must dominate the largest possible
+                # combined IM/IS cost. Since IM <= maximum_upper and
+                # IS <= idle_sum_upper, this product is exactly one larger
+                # than that lower-tier upper bound.
+                range_weight = (maximum_upper + 1) * (last_tier_upper + 1)
+                tiers = (
+                    ObjectiveTier(
+                        "idle_range_pstar",
+                        tuple(idle_range_lits),
+                        (
+                            sum(idle_range_soft_weights)
+                            if idle_range_soft_clauses
+                            else len(idle_range_lits)
+                        ),
+                        range_weight,
+                        penalty_clauses=idle_range_soft_clauses,
+                        penalty_weights=idle_range_soft_weights,
+                    ),
+                    maximum_tier,
+                    last_tier,
+                )
+                name = (
+                    "lexicographic_idle_range_maximum_idle_then_squared_idle_sum"
+                    if self.objective_mode == "ir_im_isq"
+                    else "lexicographic_idle_range_maximum_idle_then_idle_sum"
+                )
         elif self.objective_mode == "ir_is":
-            primary_weight = len(idle_sum_lits) + 1
+            primary_weight = idle_sum_upper + 1
+            idle_range_upper = (
+                sum(idle_range_soft_weights)
+                if idle_range_soft_clauses
+                else len(idle_range_lits)
+            )
             tiers = (
                 ObjectiveTier(
                     "idle_range_pstar",
                     tuple(idle_range_lits),
-                    len(idle_range_lits),
+                    idle_range_upper,
                     primary_weight,
+                    penalty_clauses=idle_range_soft_clauses,
+                    penalty_weights=idle_range_soft_weights,
                 ),
                 ObjectiveTier(
                     "total_internal_idle_slots",
-                    tuple(idle_sum_lits),
-                    len(idle_sum_lits),
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    idle_sum_upper,
                     1,
+                    penalty_clauses=idle_sum_penalties,
+                    penalty_weights=idle_sum_weights,
                 ),
             )
             name = "lexicographic_idle_range_then_idle_sum"
         elif self.objective_mode == "bg_ir_is":
-            idle_weight = len(idle_sum_lits) + 1
-            group_weight = (len(idle_range_lits) + 1) * idle_weight
+            idle_weight = idle_sum_upper + 1
+            idle_range_upper = (
+                sum(idle_range_soft_weights)
+                if idle_range_soft_clauses
+                else len(idle_range_lits)
+            )
+            group_weight = (idle_range_upper + 1) * idle_weight
             tiers = (
                 ObjectiveTier(
                     "total_break_groups",
@@ -2172,14 +3516,18 @@ class B2BSATModel:
                 ObjectiveTier(
                     "idle_range_pstar",
                     tuple(idle_range_lits),
-                    len(idle_range_lits),
+                    idle_range_upper,
                     idle_weight,
+                    penalty_clauses=idle_range_soft_clauses,
+                    penalty_weights=idle_range_soft_weights,
                 ),
                 ObjectiveTier(
                     "total_internal_idle_slots",
-                    tuple(idle_sum_lits),
-                    len(idle_sum_lits),
+                    tuple() if use_attainable_values else tuple(idle_sum_lits),
+                    idle_sum_upper,
                     1,
+                    penalty_clauses=idle_sum_penalties,
+                    penalty_weights=idle_sum_weights,
                 ),
             )
             name = "lexicographic_break_groups_idle_range_idle_sum"
@@ -2188,8 +3536,14 @@ class B2BSATModel:
                 ObjectiveTier(
                     "idle_range_pstar",
                     tuple(idle_range_lits),
-                    len(idle_range_lits),
+                    (
+                        sum(idle_range_soft_weights)
+                        if idle_range_soft_clauses
+                        else len(idle_range_lits)
+                    ),
                     1,
+                    penalty_clauses=idle_range_soft_clauses,
+                    penalty_weights=idle_range_soft_weights,
                 ),
             )
             name = "internal_idle_slot_range_pstar"
@@ -2227,8 +3581,17 @@ class B2BSATModel:
     def encoded_objective_vector(self, sat_model: list[int]) -> tuple[int, ...]:
         artifacts = self.build_base_cnf()
         positives = {lit for lit in sat_model if lit > 0}
+
+        def clause_is_violated(clause: tuple[int, ...]) -> bool:
+            return all(
+                (literal > 0 and literal not in positives)
+                or (literal < 0 and -literal in positives)
+                for literal in clause
+            )
+
         return tuple(
-            sum(lit in positives for lit in tier.literals)
+            sum(weight * clause_is_violated(clause)
+                for clause, weight in zip(tier.maxsat_clauses, tier.maxsat_weights))
             for tier in artifacts.objective_tiers
         )
 
@@ -2274,6 +3637,15 @@ class B2BSATModel:
                 "historical fairness-cap violation: "
                 f"Delta_G={stats.break_group_range}>2"
             )
+        if self.participant_idle_cap_rule == "interpolated_bounds":
+            for participant in self.objective_participants:
+                idle = stats.participant_breaks[participant]
+                cap = self.participant_idle_caps[participant]
+                if idle > cap:
+                    errors.append(
+                        "participant idle-cap violation: "
+                        f"p={participant + 1}, I_p={idle}, b_p={cap}"
+                    )
         return errors
 
     def compute_stats(self, assignment: list[int]) -> B2BSolutionStats:
@@ -2344,6 +3716,26 @@ def _main() -> None:
         choices=sorted(VALID_OBJECTIVE_MODES),
         default="ir",
     )
+    parser.add_argument(
+        "--compact-encoding",
+        choices=sorted(VALID_COMPACT_ENCODINGS),
+        default="reference",
+    )
+    parser.add_argument(
+        "--collision-amo",
+        choices=sorted(VALID_COLLISION_AMO_ENCODINGS),
+        default="pairwise",
+    )
+    parser.add_argument(
+        "--participant-idle-cap-rule",
+        choices=sorted(VALID_PARTICIPANT_IDLE_CAP_RULES),
+        default="none",
+    )
+    parser.add_argument(
+        "--participant-idle-cap-alpha",
+        default="1/2",
+        help="exact alpha in [0,1], e.g. 1/2, for interpolated_bounds",
+    )
     parser.add_argument("--write-cnf", type=Path)
     parser.add_argument("--write-wcnf", type=Path)
     parser.add_argument("--skip-meetingsx-validation", action="store_true")
@@ -2372,6 +3764,10 @@ def _main() -> None:
         encoding_variant=args.encoding_variant,
         domain_mode=args.domain_mode,
         objective_mode=args.objective_mode,
+        compact_encoding=args.compact_encoding,
+        collision_amo_encoding=args.collision_amo,
+        participant_idle_cap_rule=args.participant_idle_cap_rule,
+        participant_idle_cap_alpha=args.participant_idle_cap_alpha,
     )
     artifacts = model.build_base_cnf()
 
@@ -2413,10 +3809,33 @@ def _main() -> None:
     print(f"clauses={artifacts.n_clauses}")
     print(f"objective={artifacts.objective_name}")
     print(f"objective_mode={artifacts.objective_mode}")
+    print(f"compact_encoding={artifacts.compact_encoding}")
+    print(
+        "compact_encoding_features="
+        f"{','.join(artifacts.compact_encoding_features)}"
+    )
+    print(f"collision_amo={artifacts.collision_amo_encoding}")
+    print(f"participant_idle_cap_rule={artifacts.participant_idle_cap_rule}")
+    print(f"participant_idle_cap_alpha={artifacts.participant_idle_cap_alpha}")
+    print(f"participant_idle_lower_bounds={artifacts.participant_idle_lower_bounds}")
+    print(f"participant_idle_upper_bounds={artifacts.participant_idle_upper_bounds}")
+    print(f"participant_idle_caps={artifacts.participant_idle_caps}")
+    print(
+        "collision_amo_metrics="
+        f"cutoff:{artifacts.collision_amo_cutoff}, "
+        "commander_group_size:"
+        f"{artifacts.collision_amo_commander_group_size}, "
+        f"pairwise_groups:{artifacts.collision_amo_pairwise_group_count}, "
+        f"commander_groups:{artifacts.collision_amo_commander_group_count}, "
+        "commander_variables:"
+        f"{artifacts.collision_amo_commander_variable_count}, "
+        f"clauses:{artifacts.collision_amo_clause_count}, "
+        f"max_group:{artifacts.collision_amo_max_group_size}"
+    )
     print(
         "objective_tiers="
         + ", ".join(
-            f"{tier.name}:{len(tier.literals)}@{tier.scalar_weight}"
+            f"{tier.name}:{tier.upper_bound}@{tier.scalar_weight}"
             for tier in artifacts.objective_tiers
         )
     )
