@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Reference CSV checksums include their original line endings.
+*.csv -text whitespace=cr-at-eol
