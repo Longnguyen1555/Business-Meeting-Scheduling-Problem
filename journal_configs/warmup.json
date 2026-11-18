@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-machine-warmup-v1",
+  "description": "Excluded from analysis; one tiny instance for each production optimizer bundle after reboot.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 60,
+  "run_order_seed": 20260813,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "datasets": [
+    {
+      "id": "warmup_one",
+      "manifest": "instances_manifest.csv",
+      "family": "original",
+      "instance_names": ["tic-12.original"]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "excluded_machine_warmup",
+      "datasets": ["warmup_one"],
+      "repetitions": 1,
+      "configurations": [
+        {
+          "id": "warmup_maxsat_ir",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "warmup_multiple_ir",
+          "executor": "main",
+          "solver": "multiple",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "warmup_incremental_ir",
+          "executor": "main",
+          "solver": "incremental",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

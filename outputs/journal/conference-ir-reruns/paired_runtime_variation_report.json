@@ -1,0 +1,7 @@
+{
+  "geometric_mean_run1_over_run2": 1.001509121392246,
+  "maximum_larger_over_smaller": 1.0516765453005927,
+  "median_run1_over_run2": 1.0035030146489365,
+  "paired_instances": 226,
+  "ratios_above_1_5": 0
+}

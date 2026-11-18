@@ -3,9 +3,9 @@
   "checked_utc": "2026-11-13T05:54:15.915126+00:00",
   "sources": [
     {
-      "path": "manuscript/conference_101719.tex",
-      "location": "workspace",
-      "sha256": "2d7ffee7a120448306b5cef1727bd24d6b2785948d90c8348447c6c3883872f1"
+      "path": "frozen/conference/conference_101719.tex",
+      "sha256": "2d7ffee7a120448306b5cef1727bd24d6b2785948d90c8348447c6c3883872f1",
+      "location": "repository"
     },
     {
       "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table03_origin_detailed.csv",

@@ -1,0 +1,20 @@
+{
+  "All-126": {
+    "geometric_mean_legacy_over_rerun": 0.9294099356820917,
+    "instances": 126,
+    "maximum_legacy_over_rerun": 1.0417158377821485,
+    "median_legacy_over_rerun": 0.9600513604685468
+  },
+  "Stress": {
+    "geometric_mean_legacy_over_rerun": 1.7081400549192902,
+    "instances": 60,
+    "maximum_legacy_over_rerun": 2.0503626595786613,
+    "median_legacy_over_rerun": 1.8697930600713297
+  },
+  "Stress-high": {
+    "geometric_mean_legacy_over_rerun": 1.858209976390412,
+    "instances": 40,
+    "maximum_legacy_over_rerun": 2.047881910764625,
+    "median_legacy_over_rerun": 1.8229599839579622
+  }
+}

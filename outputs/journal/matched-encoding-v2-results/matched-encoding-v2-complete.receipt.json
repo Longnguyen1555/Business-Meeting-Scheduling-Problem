@@ -1,0 +1,12 @@
+{
+  "archive": "matched-encoding-v2-complete.tar.gz",
+  "bytes": 17878711,
+  "sha256": "3eb4f5e7a3ed90c90d969ab2ecca5a835c29d9a0a193a3878c41b2e0531217a4",
+  "files": 1302,
+  "target_cells": 6102,
+  "coverage_valid": true,
+  "independent_optimal_schedules_checked": 4577,
+  "last_worker_finished_utc": "2026-11-09T22:27:20+00:00",
+  "created_utc": "2026-11-10T00:48:53.752043+00:00",
+  "manuscript_results_updated": false
+}

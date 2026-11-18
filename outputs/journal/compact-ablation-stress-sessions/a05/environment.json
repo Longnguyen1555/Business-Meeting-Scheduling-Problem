@@ -1,0 +1,46 @@
+{
+  "boot_id": "b9133d7d-d415-4227-bb59-4c6818db6e0e",
+  "campaign_id": "journal-compact-ablation-stress-a05-v1",
+  "config_path": "outputs/journal/compact-ablation-stress-configs/a05.json",
+  "config_sha256": "bdc508959066a4fc5762f638a82ceb6ef1cc02b21385b31da864441abd08f548",
+  "cpu_governor": "",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+  "created_utc": "2026-10-17T02:58:56+00:00",
+  "execution_shard_count": 1,
+  "execution_shard_indices": [
+    0
+  ],
+  "execution_shard_policy": "content_rank_round_robin_v1",
+  "git_commit": "f6df15c584f7340049257cc36a7de235182959fb",
+  "git_dirty": true,
+  "hostname": "instance-20261011-035150",
+  "kernel_release": "6.8.0-1069-gcp",
+  "logical_cpu_cores": 8,
+  "manifest_sha256": {
+    "data_precedence_stress/instances_manifest.csv": "7572fdd0340809f8fe97901b9cc6a256532ca1abd00c263cb36fb954cc9d582f",
+    "data_precedence_stress_high/instances_manifest.csv": "9a65f78408e317842fe626eaeed73f5a4f0aa8bcf5bdd5ee97238636d0bb865f"
+  },
+  "physical_cpu_cores": 4,
+  "plan_sha256": "28553e30bfb01c40651d4cc7dacb14fe868105fb688452046ba9778e47453907",
+  "platform": "Linux-6.8.0-1069-gcp-x86_64-with-glibc2.35",
+  "python_executable": "/home/dclng566/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python",
+  "python_version": "3.10.12",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "requirements_sha256": "b9012eea9810feca67b73f015ab86b03b73b733ebf261e9b7bc47f3c424d4f79",
+  "runner_command": "/home/dclng566/Business-Meeting-Scheduling-Problem/.venv-ubuntu/bin/python /home/dclng566/Business-Meeting-Scheduling-Problem/src/Journal_Experiment.py --config /home/dclng566/Business-Meeting-Scheduling-Problem/outputs/journal/compact-ablation-stress-configs/a05.json --output-dir /home/dclng566/Business-Meeting-Scheduling-Problem/outputs/journal/compact-ablation-stress-sessions/a05 --uwrmaxsat-bin /home/dclng566/uwrmaxsat/build/release/bin/uwrmaxsat --uwrmaxsat-sha256 29c51abeabd43015c75a8e6ee789fdbb9aa2803096d2cac536ec60bd516ab4a7 --allow-dirty --allow-environment-drift --resume",
+  "swap_memory_mb": 0.0,
+  "system_memory_mb": 15988.059,
+  "uwrmaxsat_binary": "/home/dclng566/uwrmaxsat/build/release/bin/uwrmaxsat",
+  "uwrmaxsat_sha256": "29c51abeabd43015c75a8e6ee789fdbb9aa2803096d2cac536ec60bd516ab4a7"
+}

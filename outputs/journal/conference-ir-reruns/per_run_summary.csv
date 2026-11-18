@@ -1,0 +1,7 @@
+source_repetition,target_repetition,dataset,instances,OPTIMAL,UNSAT,TIMEOUT,ERROR,median_runtime_seconds
+1,2,All-126,126,89,37,0,0,0.498196
+1,2,Stress,60,60,0,0,0,0.920133
+1,2,Stress-high,40,40,0,0,0,0.783108
+2,3,All-126,126,89,37,0,0,0.4953825
+2,3,Stress,60,60,0,0,0,0.918729
+2,3,Stress-high,40,40,0,0,0,0.7854995

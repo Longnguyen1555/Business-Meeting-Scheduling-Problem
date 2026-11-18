@@ -1,9 +1,8 @@
 """Validate and summarize the cross-generation MaxSAT evaluation.
 
 The analysis keeps encoding efficiency, schedule quality, and component
-effects separate.  It builds a validated single-run runtime table from the
-first completed repetition of every cell, while retaining the three-repetition
-campaign as the final robustness analysis.
+effects separate. It retains the original three-repetition summaries and
+reports runtime sensitivity to the recorded solver and environment metadata.
 """
 
 from __future__ import annotations
@@ -75,6 +74,10 @@ STRESS_VARIANTS = {
     "Stress": {"prec30", "prec35", "prec40"},
     "Stress-high": {"prec50", "prec60"},
 }
+RUNTIME_ENVIRONMENT_FIELDS = (
+    "solver_binary_sha256", "python_version", "pysat_version", "platform",
+    "cpu_model", "physical_cpu_cores", "logical_cpu_cores", "system_memory_mb",
+)
 PRIMARY_ABLATION_PATHS = {
     "BG-d2": (
         ("bg_reference", "B", None),
@@ -162,6 +165,97 @@ def canonical_schedule_row(rows: Sequence[dict[str, str]]) -> dict[str, str]:
             int(row.get("run_order") or 10**9),
         ),
     )
+
+
+def objective_priority_tables(
+    matched_rows: Sequence[dict[str, str]],
+    priority_rows: Sequence[dict[str, str]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+    """Compare waiting priorities on one SHA-matched common optimal set."""
+    configurations = {
+        "compact_objective_ir": "IR",
+        "waiting_ir_is_compact_f": "IR-IS",
+        "compact_objective_ir_im_is": "IR-IM-IS",
+    }
+    metrics = ("idle_range_pstar", "maximum_internal_idle_slots", "total_internal_idle_slots")
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+    identities: dict[str, str] = {}
+    seen: set[tuple[str, str, int]] = set()
+    for row in (*matched_rows, *priority_rows):
+        config = row.get("planned_configuration_id", "")
+        if config not in configurations:
+            continue
+        if row.get("instance_variant") in {"prec30", "prec35", "prec40", "prec50", "prec60"}:
+            continue
+        sha, content_id = row["instance_sha256"], row["instance_content_id"]
+        if content_id in identities and identities[content_id] != sha:
+            raise ValueError("priority comparison: content ID has conflicting SHA-256 values")
+        identities[content_id] = sha
+        key = (config, sha, int(row["repetition"]))
+        if key in seen:
+            raise ValueError("priority comparison: duplicate configuration/instance/repetition")
+        seen.add(key)
+        grouped[(configurations[config], sha)].append(row)
+    selected: dict[str, dict[str, dict[str, str]]] = {name: {} for name in configurations.values()}
+    for (objective, sha), group in grouped.items():
+        if any(row["status"] == "OPTIMAL" for row in group):
+            selected[objective][sha] = canonical_schedule_row(group)
+    common = sorted(set.intersection(*(set(rows) for rows in selected.values())))
+    if not common:
+        raise ValueError("priority comparison has no common optimal instances")
+    membership: list[dict[str, object]] = []
+    for sha in sorted({sha for _, sha in grouped}):
+        sample = next(group[0] for (_, key), group in grouped.items() if key == sha)
+        item: dict[str, object] = {
+            "instance_content_id": sample["instance_content_id"], "instance_sha256": sha,
+            "included": sha in common,
+            "exclusion_reason": ";".join(name + ":no_OPTIMAL_run" for name in selected if sha not in selected[name]),
+        }
+        for objective in selected:
+            group = grouped.get((objective, sha), [])
+            chosen = selected[objective].get(sha)
+            item[objective + "_available_repetitions"] = len(group)
+            item[objective + "_selected_repetition"] = chosen["repetition"] if chosen else ""
+        membership.append(item)
+    pairs: list[dict[str, object]] = []
+    for sha in common:
+        participant_sets = []
+        for objective, rows in selected.items():
+            row = rows[sha]
+            participants = tuple(int(x) for x in row["objective_participants"].split(",") if x)
+            idle = tuple(int(x) for x in row["participant_internal_idle_slots"].split(",") if x)
+            values = [idle[p - 1] for p in participants]
+            expected = (max(values) - min(values), max(values), sum(values)) if values else (0, 0, 0)
+            if expected != tuple(int(row[field]) for field in metrics):
+                raise ValueError("priority comparison: participant idle totals disagree with metrics")
+            vector = {"IR": expected[:1], "IR-IS": (expected[0], expected[2]), "IR-IM-IS": expected}[objective]
+            if vector != tuple(int(x) for x in normalized_vector(row).split(",")):
+                raise ValueError("priority comparison: objective vector disagrees with metrics")
+            participant_sets.append(participants)
+        if len(set(participant_sets)) != 1:
+            raise ValueError("priority comparison: different objective participant sets")
+        for left, right in (("IR-IS", "IR"), ("IR-IM-IS", "IR"), ("IR-IM-IS", "IR-IS")):
+            for metric in metrics:
+                a, b = selected[left][sha], selected[right][sha]
+                pairs.append({
+                    "instance_content_id": a["instance_content_id"], "instance_sha256": sha,
+                    "left_objective": left, "right_objective": right, "measure": metric,
+                    "left_repetition": a["repetition"], "right_repetition": b["repetition"],
+                    "left_value": int(a[metric]), "right_value": int(b[metric]),
+                    "difference": int(a[metric]) - int(b[metric]),
+                })
+    summary: list[dict[str, object]] = []
+    for left, right in (("IR-IS", "IR"), ("IR-IM-IS", "IR"), ("IR-IM-IS", "IR-IS")):
+        for metric in metrics:
+            differences = [int(row["difference"]) for row in pairs
+                           if row["left_objective"] == left and row["right_objective"] == right
+                           and row["measure"] == metric]
+            summary.append({"left_objective": left, "right_objective": right, "measure": metric,
+                            "instances": len(common), "lower": sum(x < 0 for x in differences),
+                            "equal": sum(x == 0 for x in differences), "higher": sum(x > 0 for x in differences),
+                            "minimum_difference": min(differences), "median_difference": median(differences),
+                            "maximum_difference": max(differences)})
+    return summary, pairs, membership
 
 
 def aggregate_instance_repetitions(
@@ -1226,8 +1320,8 @@ OBJECTIVE_TEX = {
 }
 ENCODING_TEX = {
     "Direct": r"\textsc{Direct}",
-    "Compact-Base": r"\textsc{Compact-Base}",
-    "Compact-Objective": r"\textsc{Compact-Objective}",
+    "Compact-Base": r"\textsc{Compact-Base} \textbf{(ours)}",
+    "Compact-Objective": r"\textsc{Compact-Objective} \textbf{(ours)}",
 }
 
 
@@ -1240,6 +1334,11 @@ def _tex_number(value: object, *, decimals: int = 1) -> str:
 
 def _tex_bold(value: str, enabled: bool) -> str:
     return rf"\textbf{{{value}}}" if enabled else value
+
+
+def displayed_tie(value: object, reference: object, *, decimals: int = 1) -> bool:
+    """Compare at the precision printed in a table, without changing raw data."""
+    return f"{float(value):.{decimals}f}" == f"{float(reference):.{decimals}f}"
 
 
 def _tex_component_cells(
@@ -1271,6 +1370,7 @@ def write_latex_result_rows(
     ablation_summary: Sequence[dict[str, object]],
     quality_summary: Sequence[dict[str, object]] = (),
     quality_pairs: Sequence[dict[str, object]] = (),
+    priority_summary: Sequence[dict[str, object]] = (),
     aggregation_description: str = "the validated first run for each experimental cell",
 ) -> None:
     """Write table rows from validated CSV summaries for the manuscript."""
@@ -1280,6 +1380,8 @@ def write_latex_result_rows(
         f"% Solver values use {aggregation_description}.",
         "",
     ]
+    if priority_summary:
+        _write_macro(lines, "PriorityQualityN", [str(priority_summary[0]["instances"])])
     if quality_summary:
         _write_macro(lines, "MainQualityN", [str(quality_summary[0]["instances"])])
         quality_fields = (
@@ -1298,7 +1400,8 @@ def write_latex_result_rows(
             values = [
                 _tex_bold(
                     f"{float(row[field]):,.{3 if field == 'median_population_sd_idle_slots' else 1}f}".replace(",", "{,}"),
-                    float(row[field]) == quality_minima[field],
+                    displayed_tie(row[field], quality_minima[field],
+                                  decimals=3 if field == 'median_population_sd_idle_slots' else 1),
                 )
                 for field in quality_fields
             ]
@@ -1337,7 +1440,7 @@ def write_latex_result_rows(
                     float(formula_index[(dataset, objective, candidate)]["median_clauses"])
                     for candidate in ENCODINGS
                 )
-                cells.append(_tex_bold(_tex_number(value), value == best))
+                cells.append(_tex_bold(_tex_number(value), displayed_tie(value, best)))
             formula_rows.append(
                 f"{ENCODING_TEX[encoding]} & " + " & ".join(cells) + r" \\"
             )
@@ -1352,35 +1455,31 @@ def write_latex_result_rows(
     primary_runtime_rows: list[str] = []
     for dataset in BENCHMARK_ORDER:
         primary_runtime_rows.append(
-            rf"\multicolumn{{7}}{{@{{}}l}}{{\textit{{{dataset} ($n={BENCHMARK_SIZES[dataset]}$)}}}} \\"
+            rf"\multicolumn{{5}}{{@{{}}l}}{{\textit{{{dataset} ($n={BENCHMARK_SIZES[dataset]}$)}}}} \\"
         )
         for objective in ("BG-d2", "IR", "IR-IM-IS"):
-            direct = runtime_index[(dataset, objective, "Direct")]
-            proposed = runtime_index[(dataset, objective, "Compact-Objective")]
-            for row in (direct, proposed):
+            peers = [runtime_index[(dataset, objective, encoding)] for encoding in ENCODINGS]
+            for row in peers:
                 if sum(int(row[field]) for field in ("OPT", "UNSAT", "timeout")) != BENCHMARK_SIZES[dataset]:
                     raise ValueError(f"outcome counts do not cover {dataset}/{objective}")
             minima = {
-                field: min(float(row[field]) for row in (direct, proposed))
+                field: min(float(row[field]) for row in peers)
                 for field in ("mean_PAR2_seconds", "median_peak_RSS_mb")
             }
-            optimum_counts_differ = int(direct["OPT"]) != int(proposed["OPT"])
-            best_opt = max(int(direct["OPT"]), int(proposed["OPT"]))
-            cells = []
-            for row in (direct, proposed):
+            optimum_counts_differ = len({int(row["OPT"]) for row in peers}) > 1
+            best_opt = max(int(row["OPT"]) for row in peers)
+            for position, (encoding, row) in enumerate(zip(ENCODINGS, peers)):
+                cells = [OBJECTIVE_TEX[objective] if position == 0 else "", ENCODING_TEX[encoding]]
                 opt = _tex_bold(
                     str(int(row["OPT"])),
                     optimum_counts_differ and int(row["OPT"]) == best_opt,
                 )
                 cells.append(f"{opt}/{int(row['UNSAT'])}/{int(row['timeout'])}")
                 cells.extend(
-                    _tex_bold(_tex_number(row[field], decimals=1), float(row[field]) == minima[field])
+                    _tex_bold(_tex_number(row[field], decimals=1), displayed_tie(row[field], minima[field]))
                     for field in ("mean_PAR2_seconds", "median_peak_RSS_mb")
                 )
-            primary_runtime_rows.append(
-                " & ".join([OBJECTIVE_TEX[objective], *cells])
-                + r" \\"
-            )
+                primary_runtime_rows.append(" & ".join(cells) + r" \\")
         if dataset != BENCHMARK_ORDER[-1]:
             primary_runtime_rows.append(r"\addlinespace")
     _write_macro(lines, "MatchedRuntimePrimaryRows", primary_runtime_rows)
@@ -1435,16 +1534,15 @@ def write_latex_result_rows(
                     ),
                     _tex_bold(
                         _tex_number(row["median_runtime_seconds"], decimals=3),
-                        float(row["median_runtime_seconds"])
-                        == best["median_runtime_seconds"],
+                        displayed_tie(row["median_runtime_seconds"], best["median_runtime_seconds"], decimals=3),
                     ),
                     _tex_bold(
                         _tex_number(row["mean_PAR2_seconds"], decimals=3),
-                        float(row["mean_PAR2_seconds"]) == best["mean_PAR2_seconds"],
+                        displayed_tie(row["mean_PAR2_seconds"], best["mean_PAR2_seconds"], decimals=3),
                     ),
                     _tex_bold(
                         _tex_number(row["median_peak_RSS_mb"], decimals=2),
-                        float(row["median_peak_RSS_mb"]) == best["median_peak_RSS_mb"],
+                        displayed_tie(row["median_peak_RSS_mb"], best["median_peak_RSS_mb"], decimals=2),
                     ),
                 ]
                 objective_cell = OBJECTIVE_TEX[objective] if position == 0 else ""
@@ -1514,15 +1612,15 @@ def write_latex_result_rows(
                         _tex_bold(str(row["solved"]), int(row["solved"]) == best_solved),
                         _tex_bold(
                             _tex_number(row["median_runtime_seconds"], decimals=3),
-                            float(row["median_runtime_seconds"]) == best_runtime,
+                            displayed_tie(row["median_runtime_seconds"], best_runtime, decimals=3),
                         ),
                         _tex_bold(
                             _tex_number(row["mean_PAR2_seconds"], decimals=3),
-                            float(row["mean_PAR2_seconds"]) == best_par2,
+                            displayed_tie(row["mean_PAR2_seconds"], best_par2, decimals=3),
                         ),
                         _tex_bold(
                             _tex_number(row["median_peak_RSS_mb"], decimals=2),
-                            float(row["median_peak_RSS_mb"]) == best_rss,
+                            displayed_tie(row["median_peak_RSS_mb"], best_rss, decimals=2),
                         ),
                     )
                 )
@@ -2068,6 +2166,122 @@ def remaining_run_plan(
     return remaining
 
 
+def runtime_environment_sensitivity(rows: Sequence[dict[str, str]]) -> dict[str, object]:
+    """Compare the compact encodings using equal recorded execution metadata.
+
+    Eligibility is the same all-three-repetitions OPTIMAL condition as Figure 4.
+    Runs pair only within an instance and repetition; missing metadata never
+    counts as agreement. Ratios are Base/Objective, first using each encoding's
+    median runtime per instance, then the median across eligible instances.
+    Matching recorded metadata does not control unrecorded execution conditions.
+    """
+    grouped: dict[tuple[str, str, str, str], dict[int, dict[str, str]]] = defaultdict(dict)
+    stress_variants = set().union(*STRESS_VARIANTS.values())
+    for row in rows:
+        objective, encoding = CONFIGURATION_MAP.get(row.get("planned_configuration_id", ""), ("", ""))
+        if encoding not in {"Compact-Base", "Compact-Objective"}:
+            continue
+        dataset = stress_dataset(row) if row.get("instance_variant") in stress_variants else "All-126"
+        key = (dataset, objective, encoding, row["instance_sha256"])
+        repetition = int(row["repetition"])
+        if repetition in grouped[key]:
+            raise ValueError(f"duplicate sensitivity run: {key}/{repetition}")
+        grouped[key][repetition] = row
+
+    def summarize_pairs(pairs: list[dict[str, object]]) -> list[dict[str, object]]:
+        by_instance: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for pair in pairs:
+            by_instance[str(pair["instance_sha256"])].append(pair)
+        result = []
+        for sha, values in sorted(by_instance.items()):
+            base = median(float(value["base_runtime_seconds"]) for value in values)
+            objective = median(float(value["objective_runtime_seconds"]) for value in values)
+            result.append({"instance_sha256": sha,
+                           "repetitions": sorted(int(value["repetition"]) for value in values),
+                           "base_median_runtime_seconds": base,
+                           "objective_median_runtime_seconds": objective,
+                           "runtime_ratio": base / objective})
+        return result
+
+    comparisons = []
+    for dataset in BENCHMARK_ORDER:
+        for objective in OBJECTIVE_DISPLAY.values():
+            instances = sorted({sha for d, q, encoding, sha in grouped
+                                if (d, q, encoding) == (dataset, objective, "Compact-Base")})
+            pooled: dict[str, float] = {}
+            strata: dict[tuple[str, ...], list[dict[str, object]]] = defaultdict(list)
+            exclusions: Counter[str] = Counter()
+            mismatches: Counter[str] = Counter()
+            for sha in instances:
+                base = grouped[(dataset, objective, "Compact-Base", sha)]
+                other = grouped.get((dataset, objective, "Compact-Objective", sha), {})
+                if not all(set(group) == {1, 2, 3} and all(row["status"] == "OPTIMAL" for row in group.values())
+                           for group in (base, other)):
+                    continue
+                for row in (*base.values(), *other.values()):
+                    time = numeric(row, "runtime_seconds")
+                    if not math.isfinite(time) or time <= 0:
+                        raise ValueError("sensitivity analysis needs positive finite runtimes")
+                pooled[sha] = (median(numeric(row, "runtime_seconds") for row in base.values()) /
+                               median(numeric(row, "runtime_seconds") for row in other.values()))
+                for repetition in (1, 2, 3):
+                    left, right = base[repetition], other[repetition]
+                    left_env = tuple(str(left.get(field) or "").strip() for field in RUNTIME_ENVIRONMENT_FIELDS)
+                    right_env = tuple(str(right.get(field) or "").strip() for field in RUNTIME_ENVIRONMENT_FIELDS)
+                    if not all(left_env) or not all(right_env):
+                        exclusions["missing_metadata"] += 1
+                        continue
+                    different = [field for field, a, b in zip(RUNTIME_ENVIRONMENT_FIELDS, left_env, right_env) if a != b]
+                    if different:
+                        exclusions["different_metadata"] += 1
+                        mismatches.update(different)
+                        continue
+                    strata[left_env].append({
+                        "instance_sha256": sha, "repetition": repetition,
+                        "base_run_key": left.get("run_key", ""),
+                        "objective_run_key": right.get("run_key", ""),
+                        "base_runtime_seconds": numeric(left, "runtime_seconds"),
+                        "objective_runtime_seconds": numeric(right, "runtime_seconds"),
+                    })
+            all_pairs = [pair for pairs in strata.values() for pair in pairs]
+            matched = summarize_pairs(all_pairs)
+            matched_shas = [str(value["instance_sha256"]) for value in matched]
+            stratum_results = []
+            for environment, pairs in sorted(strata.items()):
+                per_instance = summarize_pairs(pairs)
+                stratum_results.append({
+                    "environment": dict(zip(RUNTIME_ENVIRONMENT_FIELDS, environment)),
+                    "instances": len(per_instance), "run_pairs": len(pairs),
+                    "median_runtime_ratio": median(float(value["runtime_ratio"]) for value in per_instance),
+                    "instance_ratios": per_instance,
+                    "paired_runs": sorted(pairs, key=lambda value: (str(value["instance_sha256"]), int(value["repetition"]))),
+                })
+            comparisons.append({
+                "dataset": dataset, "objective": objective,
+                "all_optimal_instances": len(pooled),
+                "pooled_median_runtime_ratio": median(pooled.values()) if pooled else None,
+                "pooled_instance_ratios": [{"instance_sha256": sha, "runtime_ratio": value}
+                                           for sha, value in sorted(pooled.items())],
+                "metadata_matched_instances": len(matched),
+                "metadata_matched_run_pairs": len(all_pairs),
+                "metadata_matched_median_runtime_ratio": median(float(value["runtime_ratio"]) for value in matched) if matched else None,
+                "pooled_median_on_matched_instances": median(pooled[sha] for sha in matched_shas) if matched_shas else None,
+                "matched_instance_ratios": matched,
+                "excluded_run_pairs": {reason: exclusions[reason] for reason in ("missing_metadata", "different_metadata")},
+                "mismatched_field_counts": dict(sorted(mismatches.items())),
+                "strata": stratum_results,
+            })
+    return {
+        "ratio": "Compact-Base / Compact-Objective",
+        "matching_fields": list(RUNTIME_ENVIRONMENT_FIELDS),
+        "eligibility": "both encodings prove optimality in all three repetitions, as in Figure 4",
+        "pairing": "same instance SHA-256 and repetition; all matching fields present and equal",
+        "aggregation": "median runtime per encoding and instance using the retained pairs, then median Base/Objective ratio across instances",
+        "interpretation": "descriptive sensitivity analysis of recorded runs; equal recorded metadata does not control unrecorded execution conditions",
+        "comparisons": comparisons,
+    }
+
+
 def validate_matched_matrix(rows: Sequence[dict[str, str]]) -> dict[str, object]:
     """Check the full 6,102-row matrix before any publication output is changed."""
     validations: dict[str, object] = {}
@@ -2107,7 +2321,7 @@ def validate_matched_matrix(rows: Sequence[dict[str, str]]) -> dict[str, object]
 
 
 def analyze_matched_campaign(
-    path: Path, *, output_dir: Path, latex_output: Path
+    path: Path, *, output_dir: Path, latex_output: Path, priority_results: Path | None = None
 ) -> dict[str, object]:
     """Publish tables only after all three sets have three validated runs."""
     from Matched_Encoding_Evaluation import STATIC_FIELDS, recover_assignment
@@ -2117,6 +2331,7 @@ def analyze_matched_campaign(
 
     rows = read_rows([path])
     validation = validate_matched_matrix(rows)
+    environment_sensitivity = runtime_environment_sensitivity(rows)
     conference_validation = conference_consistency_report(rows)
     grouped: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     instances: dict[str, object] = {}
@@ -2141,6 +2356,27 @@ def analyze_matched_campaign(
             errors.append("homogeneity violation")
         if errors:
             raise ValueError(f"{row['run_key']}: {errors}")
+    priority_path = priority_results or PROJECT_ROOT / "outputs/journal/all126-first/shards-0-1-2-of-4/normalized/detailed.csv"
+    priority_rows = read_rows([priority_path])
+    matched_by_sha = {row["instance_sha256"]: row for row in rows
+                      if row["planned_configuration_id"] == "compact_objective_ir"}
+    for row in priority_rows:
+        if row.get("planned_configuration_id") != "waiting_ir_is_compact_f" or row["status"] != "OPTIMAL":
+            continue
+        sha = row["instance_sha256"]
+        instance = instances[sha]
+        reference = matched_by_sha[sha]
+        for field in ("domain_mode", "precedence_encoding", "precedence_graph", "compact_encoding", "collision_amo"):
+            if row[field] != reference[field]:
+                raise ValueError(f"priority comparison: different {field} for {sha}")
+        assignment = recover_assignment(row, instance.n_meetings)
+        errors = validate_schedule_assignment(instance, assignment)
+        metrics = evaluate_journal_schedule(instance, assignment, objective_mode="ir_is")
+        if metrics.objective_vector != tuple(int(value) for value in normalized_vector(row).split(",")):
+            errors.append("independent IR-IS objective mismatch")
+        if errors:
+            raise ValueError(f"priority comparison: {sha}: {errors}")
+    priority_summary, priority_pairs, priority_membership = objective_priority_tables(rows, priority_rows)
     outcome_rows: list[dict[str, object]] = []
     canonical: list[dict[str, str]] = []
     quality_rows: list[dict[str, str]] = []
@@ -2196,6 +2432,9 @@ def analyze_matched_campaign(
         "quality_summary.csv": quality_summary, "quality_pairs.csv": quality_pairs,
         "quality_effects.csv": quality_effects,
         "analysis_set_membership.csv": membership,
+        "objective_priority_summary.csv": priority_summary,
+        "objective_priority_pairs.csv": priority_pairs,
+        "objective_priority_membership.csv": priority_membership,
     }.items():
         write_csv(output_dir / name, values)
     write_latex_result_rows(latex_output, formula_summary=formula_summary,
@@ -2203,6 +2442,7 @@ def analyze_matched_campaign(
         runtime_ratios=runtime_ratios, runtime_effects=runtime_effects,
         stress_quality=stress_quality, ablation_summary=ablation,
         quality_summary=quality_summary, quality_pairs=quality_pairs,
+        priority_summary=priority_summary,
         aggregation_description="three repetitions; time/RSS use OPTIMAL runs for solved-feasible instances; PAR-2 retains all timeouts; ablation runtime remains single-run")
     (output_dir / "conference_consistency_report.json").write_text(
         json.dumps(conference_validation, indent=2) + "\n")
@@ -2216,9 +2456,16 @@ def analyze_matched_campaign(
         "time_rss_rule": "median of available OPTIMAL runs per OPTIMAL instance; otherwise all three runs; then median over instances",
         "outcome_rule": "OPT if at least one repetition proves optimality; UNSAT if proven; otherwise TIMEOUT",
         "paired_runtime_rule": "all three repetitions OPTIMAL in both encodings",
+        "runtime_environment_sensitivity": environment_sensitivity,
         "PAR2_rule": "penalize each run before taking the per-instance median, then average instances",
         "ablation_runtime": "descriptive single-run measurements",
         "manuscript_prose_review_required": True,
+        "objective_priority_comparison": {
+            "instances": priority_summary[0]["instances"],
+            "IR_IS_source": str(priority_path.resolve()),
+            "IR_IS_source_sha256": hashlib.sha256(priority_path.read_bytes()).hexdigest(),
+            "selection": "lowest-numbered OPTIMAL repetition; IR-IS single run, IR and IR-IM-IS three runs",
+        },
     }
     report["source_data_sha256"] = {item.name: hashlib.sha256(item.read_bytes()).hexdigest()
                                     for item in sorted(output_dir.glob("*.csv"))}
@@ -2229,6 +2476,8 @@ def analyze_matched_campaign(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--matched-results", type=Path, help="complete 6,102-row matched campaign; publish three-repetition statistics")
+    parser.add_argument("--priority-results", type=Path,
+                        help="recorded IR-IS runs for the common-optimal waiting-priority comparison")
     parser.add_argument(
         "--campaign-results",
         type=Path,
@@ -2286,19 +2535,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--latex-output",
         type=Path,
-        default=(
-            PROJECT_ROOT.parent
-            / "JAIR_Example_Template"
-            / "generated-results-rows.tex"
-        ),
+        help="LaTeX result rows (default: generated-results-rows.tex in --output-dir)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.latex_output is None:
+        args.latex_output = args.output_dir / "generated-results-rows.tex"
+    return args
 
 
 def main() -> int:
     args = parse_args()
     if args.matched_results is not None:
-        report = analyze_matched_campaign(args.matched_results, output_dir=args.output_dir, latex_output=args.latex_output)
+        report = analyze_matched_campaign(args.matched_results, output_dir=args.output_dir,
+                                         latex_output=args.latex_output, priority_results=args.priority_results)
         print(json.dumps(report, indent=2))
         return 0
     compact_paths = args.compact_results or [

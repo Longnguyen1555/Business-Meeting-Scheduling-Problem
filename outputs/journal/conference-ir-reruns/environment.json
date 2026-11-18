@@ -1,0 +1,51 @@
+{
+  "archive_only": true,
+  "boot_id": "",
+  "campaign_id": "journal-conference-ir-reruns-v1",
+  "config_path": "journal_configs/conference_ir_reruns.json",
+  "config_sha256": "2891af707bcb034d36fb0ff76cb52a12691ddc1607f6dea4168cfa875de605b6",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8581C CPU @ 2.30GHz",
+  "created_utc": "2026-10-24T00:00:00+07:00",
+  "environment_drift_accepted": true,
+  "execution_shard_count": 1,
+  "execution_shard_indices": [
+    0
+  ],
+  "execution_shard_policy": "content_rank_round_robin_v1",
+  "git_commit": "MULTIPLE",
+  "git_dirty": true,
+  "hostname": "CONFERENCE_IR_RERUN_ARCHIVE",
+  "kernel_release": "MULTIPLE",
+  "logical_cpu_cores": 8,
+  "manifest_sha256": {
+    "data_precedence_stress/instances_manifest.csv": "7572fdd0340809f8fe97901b9cc6a256532ca1abd00c263cb36fb954cc9d582f",
+    "data_precedence_stress_high/instances_manifest.csv": "9a65f78408e317842fe626eaeed73f5a4f0aa8bcf5bdd5ee97238636d0bb865f",
+    "instances_manifest.csv": "42f85eaadecf187016397f0c1e7bb04bc871d45fe6ef1d90e17c9bd1b4d77ed0"
+  },
+  "physical_cpu_cores": 4,
+  "plan_sha256": "cc1a9a6af6b1e5a14b180a7b37d393684e0185325ab2160d75f32380cfd0188d",
+  "platform": "MULTIPLE",
+  "python_version": "MULTIPLE",
+  "required_machine": {
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "logical_cpu_cores": 8,
+    "max_peak_memory_fraction": 0.8,
+    "physical_cpu_cores": 4,
+    "profile_id": "conference-gcp-20260723",
+    "random_seed": 0,
+    "swap_memory_mb_max": 0,
+    "system_memory_mb_max": 16500,
+    "system_memory_mb_min": 15000,
+    "threads_per_run": 1
+  },
+  "requirements_sha256": "MULTIPLE",
+  "runner_command": "Prepare_Conference_IR_Reruns.py",
+  "source_solver_binary_sha256": [
+    "29c51abeabd43015c75a8e6ee789fdbb9aa2803096d2cac536ec60bd516ab4a7",
+    "f1d9885e69b792606a6cb8903b13f758552015b6e52c3cb6715703eb519fa511"
+  ],
+  "swap_memory_mb": 0,
+  "system_memory_mb": 15988.0,
+  "uwrmaxsat_binary": "MULTIPLE",
+  "uwrmaxsat_sha256": "MULTIPLE"
+}

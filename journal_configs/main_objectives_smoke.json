@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-main-objectives-smoke-v1",
+  "description": "Two-instance, one-repetition smoke test for the primary matrix.",
+  "timeout_seconds": 300,
+  "controller_grace_seconds": 30,
+  "run_order_seed": 20260915,
+  "require_clean_worktree": false,
+  "expected_job_count": 12,
+  "datasets": [
+    {
+      "id": "official_all_126",
+      "manifest": "instances_manifest.csv",
+      "family": "original",
+      "max_instances": 2
+    }
+  ],
+  "blocks_from": "main_objectives_blocks.json",
+  "block_repetitions": {
+    "primary_two_models_three_objectives": 1
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-generated-core-v1",
+  "description": "E5 Generated-300 generalization; run development before the frozen held-out block.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260810,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "datasets": [
+    {
+      "id": "generated_development_240",
+      "manifest": "data_journal_generated/development_manifest.csv",
+      "family": "all"
+    },
+    {
+      "id": "generated_heldout_60",
+      "manifest": "data_journal_generated/heldout_manifest.csv",
+      "family": "all"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "e5_generated_development",
+      "datasets": ["generated_development_240"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "generated_compact_full_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_full_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_bg_d2_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    },
+    {
+      "id": "e5_generated_heldout",
+      "datasets": ["generated_heldout_60"],
+      "repetitions": 3,
+      "configurations": [
+        {
+          "id": "generated_compact_full_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_ir_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_full_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "full",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_ir_is_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "ir_is",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        },
+        {
+          "id": "generated_compact_reduced_bg_d2_uwr",
+          "executor": "main",
+          "solver": "maxsat",
+          "objective_mode": "bg_d2",
+          "domain_mode": "reduced",
+          "domain_filter_graph": "distance_closure",
+          "precedence_encoding": "sparse_suffix",
+          "precedence_graph": "distance_closure",
+          "encoding_variant": "imp12+",
+          "maxsat_backend": "uwrmaxsat",
+          "sat_backend": "cadical"
+        }
+      ]
+    }
+  ]
+}

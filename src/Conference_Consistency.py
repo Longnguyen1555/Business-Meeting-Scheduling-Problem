@@ -26,7 +26,7 @@ STRESS_PATHS = (
 
 
 def frozen_stress_bytes(path: str) -> bytes:
-    """Read the pinned export in review packages, or the original Git object."""
+    """Read the frozen reference data, or the original Git object."""
     exported = PROJECT_ROOT / "frozen/conference" / path
     if exported.is_file():
         raw = exported.read_bytes()
@@ -85,8 +85,8 @@ def compare_ir_reference(
 
 
 def conference_consistency_report(rows: Sequence[dict], *, manuscript: Path | None = None) -> dict:
-    manuscript = manuscript or PROJECT_ROOT.parent / "manuscript/conference_101719.tex"
-    pinned = [{"path": "manuscript/conference_101719.tex", "location": "workspace",
+    manuscript = manuscript or PROJECT_ROOT / "frozen/conference/conference_101719.tex"
+    pinned = [{"path": "frozen/conference/conference_101719.tex", "location": "repository",
                "sha256": hashlib.sha256(manuscript.read_bytes()).hexdigest()}]
     official, _ = _historical_ir_rows(DEFAULT_IR_CSVS)
     for path in DEFAULT_IR_CSVS:

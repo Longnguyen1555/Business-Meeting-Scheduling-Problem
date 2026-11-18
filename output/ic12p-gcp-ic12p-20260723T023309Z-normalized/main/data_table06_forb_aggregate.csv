@@ -1,0 +1,157 @@
+instance,precedence_encoding,precedence_graph,precedence_configuration,solver,objective,domain_mode,basic,imp1,imp2,imp12,imp12+
+forum-13.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.6 0
+forum-13.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.7 0
+forum-13.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.6 0
+forum-13.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.5 0
+forum-13.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.7 0
+forum-13.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.6 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.5 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.8 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.7 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.5 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.7 0
+forum-13.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.6 0
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,1.3 2
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,1.7 2
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,1.0 2
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,1.2 2
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,1.9 2
+forum-13crafb.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,1.6 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.7 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,1.0 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,1.7 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,1.2 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,1.7 2
+forum-13crafb.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.9 2
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,2.1 0
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.8 0
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,1.1 0
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,4.0 0
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.8 0
+forum-13crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.9 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,1.3 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.8 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.8 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.6 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.8 0
+forum-13crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,3.5 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,3.7 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,5.7 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,8.5 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,4.4 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,6.5 0
+forum-14.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,5.3 0
+forum-14.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forum-14.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forum-14.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forum-14.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forum-14.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forum-14.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.2 0
+forumt-14.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.5 0
+forumt-14.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.3 0
+forumt-14.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.3 0
+forumt-14.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.5 0
+forumt-14.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.4 0
+forumt-14.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.2 0
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.5 0
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.3 0
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.4 0
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.5 0
+forumt-14crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.5 0
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafd.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+forumt-14crafe.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-12crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,0.2 0
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,0.3 0
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,0.2 0
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,0.2 0
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,0.2 0
+tic-13crafb.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,0.2 0
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafb.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0003,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),full,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,incremental,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,maxsat,IdleRange(P*),reduced,-,-,-,-,UNSAT
+tic-13crafc.forb0007,pairwise,direct,pairwise+direct,multiple,IdleRange(P*),reduced,-,-,-,-,UNSAT

@@ -1,0 +1,263 @@
+{
+  "archive_campaign_id": "journal-conference-ir-reruns-v1",
+  "archive_plan_sha256": "cc1a9a6af6b1e5a14b180a7b37d393684e0185325ab2160d75f32380cfd0188d",
+  "paired_run_audit": {
+    "accepted_empty_precedence_metadata_differences": 0,
+    "contents": 226,
+    "formula_fields": [
+      "n_vars",
+      "n_hard_clauses",
+      "n_soft_clauses",
+      "n_total_clauses",
+      "n_primary_variables",
+      "n_auxiliary_variables",
+      "n_total_literals",
+      "max_hard_clause_length",
+      "n_hard_literals",
+      "n_soft_literals",
+      "max_soft_clause_length",
+      "n_unit_hard_clauses",
+      "n_binary_hard_clauses",
+      "n_ternary_hard_clauses",
+      "n_long_hard_clauses",
+      "soft_clause_weight",
+      "soft_weight_sum",
+      "n_objective_lits",
+      "optimizer_added_variables_peak",
+      "optimizer_added_clauses_peak",
+      "optimizer_added_literals_peak",
+      "optimizer_added_clauses_cumulative",
+      "full_schedule_candidates",
+      "unary_eligible_schedule_candidates",
+      "reduced_schedule_candidates",
+      "active_schedule_candidates",
+      "precedence_direct_edges",
+      "precedence_closure_edges",
+      "precedence_relation_edges",
+      "precedence_pairwise_clauses",
+      "precedence_sparse_link_clauses",
+      "initial_schedule_candidates",
+      "unary_removed_schedule_candidates",
+      "preprocessing_removed_schedule_candidates",
+      "removed_schedule_candidates"
+    ],
+    "formula_fields_checked": 35,
+    "identity_mismatches": 0,
+    "status_counts": {
+      "OPTIMAL": 189,
+      "UNSAT": 37
+    }
+  },
+  "runtime_variation": {
+    "geometric_mean_run1_over_run2": 1.001509121392246,
+    "maximum_larger_over_smaller": 1.0516765453005927,
+    "median_run1_over_run2": 1.0035030146489365,
+    "paired_instances": 226,
+    "ratios_above_1_5": 0
+  },
+  "source_provenance": [
+    {
+      "files": {
+        "stress": {
+          "detailed_path": "output/conference_ir/run1/stress_detailed.csv",
+          "detailed_sha256": "bf0f1c4abdb5418ee524955fe338d601e16d51f78594d7aa8baaa9483b85b6c0",
+          "rows": 60,
+          "summary_path": "output/conference_ir/run1/stress.csv",
+          "summary_sha256": "dcf2612a875e3de8c149573cef4da3b3172baa8e9e1cac3e73089c025c340705"
+        },
+        "stress_high": {
+          "detailed_path": "output/conference_ir/run1/stress_high_detailed.csv",
+          "detailed_sha256": "47001145a7b7e9331028c52294f6e666de969765b43123309d3c1537bb50417c",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run1/stress_high.csv",
+          "summary_sha256": "200f2770d041acfc05ffddd89ca8d20e23136f678404196dc988133472d69045"
+        },
+        "table03": {
+          "detailed_path": "output/conference_ir/run1/table03_detailed.csv",
+          "detailed_sha256": "48a8f0b9277fc1d07b23d292663fc619d555f1dccd32579716cba12dbf5b7dfe",
+          "rows": 20,
+          "summary_path": "output/conference_ir/run1/table03.csv",
+          "summary_sha256": "0e51e88b3fa0adc5960343bfa1c1fc65a6df150348c771240586ae518111d7ea"
+        },
+        "table06": {
+          "detailed_path": "output/conference_ir/run1/table06_detailed.csv",
+          "detailed_sha256": "3efcda553c87d27942407a2bc493a7813d6c6b9fa46f6ef8e7a5a7ae7396dea8",
+          "rows": 26,
+          "summary_path": "output/conference_ir/run1/table06.csv",
+          "summary_sha256": "f70be4044e52107abf93419650ae7b9e3d7b64a8760e5ab21270b5dad73f040e"
+        },
+        "table07": {
+          "detailed_path": "output/conference_ir/run1/table07_detailed.csv",
+          "detailed_sha256": "f7aa47f5feb38f4f104ab4a628ff24d91c1737ab0de1ea827676b33114b710cf",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run1/table07.csv",
+          "summary_sha256": "e4079548c44c0ce90aa69abd766bb390e5392cf98a3fb46f8645a704e67269e6"
+        },
+        "table08": {
+          "detailed_path": "output/conference_ir/run1/table08_detailed.csv",
+          "detailed_sha256": "a93df1f418811cd07e7c810b02a02df77387377cb31de95d20909c28fc645f13",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run1/table08.csv",
+          "summary_sha256": "63de7d8c2e6092d45f104bc38448f4eaf52a83b86f60ff68d6040108a7e970d2"
+        }
+      },
+      "run": 1
+    },
+    {
+      "files": {
+        "stress": {
+          "detailed_path": "output/conference_ir/run2/stress_detailed.csv",
+          "detailed_sha256": "f37e0c8e5a1970f3a6b2fba0868616b0840aca3ac1871ad6e043c6e6e22c0c1f",
+          "rows": 60,
+          "summary_path": "output/conference_ir/run2/stress.csv",
+          "summary_sha256": "8276fe7663cb4555758d9045ad2c0bc80561ea9dd598bf647b24f2b55512379b"
+        },
+        "stress_high": {
+          "detailed_path": "output/conference_ir/run2/stress_high_detailed.csv",
+          "detailed_sha256": "006acd60749bb7cc78956d3af87021d3756ff43b7344692d785b51a0f92dc4b6",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run2/stress_high.csv",
+          "summary_sha256": "ec20d7a7df1b0443ce11730237209882336e0867011c775fb84411d1d821b9cf"
+        },
+        "table03": {
+          "detailed_path": "output/conference_ir/run2/table03_detailed.csv",
+          "detailed_sha256": "9067c065453753952ba63ab5dca2dbeed2709bb31352d63ae9cbd1ed7d440ae2",
+          "rows": 20,
+          "summary_path": "output/conference_ir/run2/table03.csv",
+          "summary_sha256": "4a1522b41298a466ea2a6b43338fab8e12a6bcdd7eb44ec2e1bb81a641c35ed4"
+        },
+        "table06": {
+          "detailed_path": "output/conference_ir/run2/table06_detailed.csv",
+          "detailed_sha256": "fa224c32df555b402a1791e039273ad3fa825ac3bf1a30125597e0be9957b386",
+          "rows": 26,
+          "summary_path": "output/conference_ir/run2/table06.csv",
+          "summary_sha256": "21363d33d3a6d5890cb866c7f08433f5df3dbaef1a1e8ec0df34e6a785d9701a"
+        },
+        "table07": {
+          "detailed_path": "output/conference_ir/run2/table07_detailed.csv",
+          "detailed_sha256": "5c777ec7ef8e8299348be756d32e23170f8863a90c3c3f099ba7eb0bb3fd5b27",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run2/table07.csv",
+          "summary_sha256": "e4079548c44c0ce90aa69abd766bb390e5392cf98a3fb46f8645a704e67269e6"
+        },
+        "table08": {
+          "detailed_path": "output/conference_ir/run2/table08_detailed.csv",
+          "detailed_sha256": "1204a23812a88865d16a4ce111d0ca8962b53bcbcbbc8f88b5e6b4763e72d4c6",
+          "rows": 40,
+          "summary_path": "output/conference_ir/run2/table08.csv",
+          "summary_sha256": "f840f06a4cc1955990ddeaa59f6a7a088bd39d5a2736183766a7af0488c3b8f4"
+        }
+      },
+      "run": 2
+    }
+  ],
+  "source_run_audits": [
+    {
+      "accepted_empty_precedence_metadata_differences": 86,
+      "contents": 226,
+      "formula_fields": [
+        "n_vars",
+        "n_hard_clauses",
+        "n_soft_clauses",
+        "n_total_clauses",
+        "n_primary_variables",
+        "n_auxiliary_variables",
+        "n_total_literals",
+        "max_hard_clause_length",
+        "n_hard_literals",
+        "n_soft_literals",
+        "max_soft_clause_length",
+        "n_unit_hard_clauses",
+        "n_binary_hard_clauses",
+        "n_ternary_hard_clauses",
+        "n_long_hard_clauses",
+        "soft_clause_weight",
+        "soft_weight_sum",
+        "n_objective_lits",
+        "optimizer_added_variables_peak",
+        "optimizer_added_clauses_peak",
+        "optimizer_added_literals_peak",
+        "optimizer_added_clauses_cumulative",
+        "full_schedule_candidates",
+        "unary_eligible_schedule_candidates",
+        "reduced_schedule_candidates",
+        "active_schedule_candidates",
+        "precedence_direct_edges",
+        "precedence_closure_edges",
+        "precedence_relation_edges",
+        "precedence_pairwise_clauses",
+        "precedence_sparse_link_clauses",
+        "initial_schedule_candidates",
+        "unary_removed_schedule_candidates",
+        "preprocessing_removed_schedule_candidates",
+        "removed_schedule_candidates"
+      ],
+      "formula_fields_checked": 35,
+      "identity_mismatches": 0,
+      "status_counts": {
+        "OPTIMAL": 189,
+        "UNSAT": 37
+      }
+    },
+    {
+      "accepted_empty_precedence_metadata_differences": 86,
+      "contents": 226,
+      "formula_fields": [
+        "n_vars",
+        "n_hard_clauses",
+        "n_soft_clauses",
+        "n_total_clauses",
+        "n_primary_variables",
+        "n_auxiliary_variables",
+        "n_total_literals",
+        "max_hard_clause_length",
+        "n_hard_literals",
+        "n_soft_literals",
+        "max_soft_clause_length",
+        "n_unit_hard_clauses",
+        "n_binary_hard_clauses",
+        "n_ternary_hard_clauses",
+        "n_long_hard_clauses",
+        "soft_clause_weight",
+        "soft_weight_sum",
+        "n_objective_lits",
+        "optimizer_added_variables_peak",
+        "optimizer_added_clauses_peak",
+        "optimizer_added_literals_peak",
+        "optimizer_added_clauses_cumulative",
+        "full_schedule_candidates",
+        "unary_eligible_schedule_candidates",
+        "reduced_schedule_candidates",
+        "active_schedule_candidates",
+        "precedence_direct_edges",
+        "precedence_closure_edges",
+        "precedence_relation_edges",
+        "precedence_pairwise_clauses",
+        "precedence_sparse_link_clauses",
+        "initial_schedule_candidates",
+        "unary_removed_schedule_candidates",
+        "preprocessing_removed_schedule_candidates",
+        "removed_schedule_candidates"
+      ],
+      "formula_fields_checked": 35,
+      "identity_mismatches": 0,
+      "status_counts": {
+        "OPTIMAL": 189,
+        "UNSAT": 37
+      }
+    }
+  ],
+  "status_expectations": {
+    "All-126": {
+      "OPTIMAL": 89,
+      "UNSAT": 37
+    },
+    "Stress": {
+      "OPTIMAL": 60
+    },
+    "Stress-high": {
+      "OPTIMAL": 40
+    }
+  },
+  "valid": true
+}

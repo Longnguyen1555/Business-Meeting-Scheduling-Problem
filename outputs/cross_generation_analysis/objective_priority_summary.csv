@@ -1,0 +1,10 @@
+left_objective,right_objective,measure,instances,lower,equal,higher,minimum_difference,median_difference,maximum_difference
+IR-IS,IR,idle_range_pstar,68,0,68,0,0,0.0,0
+IR-IS,IR,maximum_internal_idle_slots,68,11,57,0,-2,0.0,0
+IR-IS,IR,total_internal_idle_slots,68,49,19,0,-698,-36.5,0
+IR-IM-IS,IR,idle_range_pstar,68,0,68,0,0,0.0,0
+IR-IM-IS,IR,maximum_internal_idle_slots,68,11,57,0,-2,0.0,0
+IR-IM-IS,IR,total_internal_idle_slots,68,49,19,0,-698,-36.5,0
+IR-IM-IS,IR-IS,idle_range_pstar,68,0,68,0,0,0.0,0
+IR-IM-IS,IR-IS,maximum_internal_idle_slots,68,0,68,0,0,0.0,0
+IR-IM-IS,IR-IS,total_internal_idle_slots,68,0,68,0,0,0.0,0

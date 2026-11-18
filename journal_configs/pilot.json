@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "campaign_name": "journal-stratified-pilot-v1",
+  "description": "One-repetition pilot at the conference 7,200-second cutoff for RAM, compute-budget and matrix validation; held-out data excluded.",
+  "timeout_seconds": 7200,
+  "controller_grace_seconds": 120,
+  "run_order_seed": 20260812,
+  "require_clean_worktree": true,
+  "required_machine": {
+    "profile_id": "conference-gcp-20260723",
+    "cpu_model_contains": "Xeon(R) Platinum 8581C",
+    "physical_cpu_cores": 4,
+    "logical_cpu_cores": 8,
+    "system_memory_mb_min": 15000,
+    "system_memory_mb_max": 16500,
+    "swap_memory_mb_max": 0,
+    "max_peak_memory_fraction": 0.8,
+    "threads_per_run": 1,
+    "random_seed": 0
+  },
+  "blocks_from": "official_core.json",
+  "block_repetitions": {
+    "e1_historical_representation": 1,
+    "e2_objective_representation": 1,
+    "e3_optimizer_additional": 1
+  },
+  "block_datasets": {
+    "e1_historical_representation": [
+      "pilot_official_smoke",
+      "pilot_original_20",
+      "pilot_official_precedence",
+      "pilot_stress_precedence",
+      "pilot_stress_high_precedence",
+      "pilot_generated_development"
+    ],
+    "e2_objective_representation": [
+      "pilot_official_smoke",
+      "pilot_original_20",
+      "pilot_official_precedence",
+      "pilot_stress_precedence",
+      "pilot_stress_high_precedence",
+      "pilot_generated_development"
+    ],
+    "e3_optimizer_additional": [
+      "pilot_official_smoke",
+      "pilot_original_20",
+      "pilot_official_precedence",
+      "pilot_stress_precedence",
+      "pilot_stress_high_precedence",
+      "pilot_generated_development"
+    ]
+  },
+  "datasets": [
+    {
+      "id": "pilot_official_smoke",
+      "manifest": "instances_manifest.csv",
+      "family": "all",
+      "instance_names": [
+        "forum-13.original",
+        "forum-13crafb.original",
+        "forum-13crafc.original",
+        "forum-14.forb0003",
+        "forumt-14.forb0003",
+        "forumt-14crafc.forb0003",
+        "forumt-14crafd.fixed020-Forb",
+        "forumt-14crafe.fixed020-Forb",
+        "tic-12.fixed020-Forb",
+        "tic-12crafc.prec15",
+        "tic-13.prec15",
+        "tic-13crafb.prec15"
+      ]
+    },
+    {
+      "id": "pilot_original_20",
+      "manifest": "instances_manifest.csv",
+      "family": "original"
+    },
+    {
+      "id": "pilot_official_precedence",
+      "manifest": "instances_manifest.csv",
+      "family": "precedence",
+      "lineage_ids": [
+        "b2b-lineage-tic-12crafc",
+        "b2b-lineage-tic-13",
+        "b2b-lineage-tic-13crafb"
+      ]
+    },
+    {
+      "id": "pilot_stress_precedence",
+      "manifest": "data_precedence_stress/instances_manifest.csv",
+      "family": "all",
+      "lineage_ids": [
+        "b2b-lineage-tic-12crafc",
+        "b2b-lineage-tic-13",
+        "b2b-lineage-tic-13crafb"
+      ]
+    },
+    {
+      "id": "pilot_stress_high_precedence",
+      "manifest": "data_precedence_stress_high/instances_manifest.csv",
+      "family": "all",
+      "lineage_ids": [
+        "b2b-lineage-tic-12crafc",
+        "b2b-lineage-tic-13",
+        "b2b-lineage-tic-13crafb"
+      ]
+    },
+    {
+      "id": "pilot_generated_development",
+      "manifest": "data_journal_generated/development_manifest.csv",
+      "family": "all",
+      "instance_names": [
+        "journal-dev-0000",
+        "journal-dev-0008",
+        "journal-dev-0016",
+        "journal-dev-0024",
+        "journal-dev-0032",
+        "journal-dev-0040",
+        "journal-dev-0048",
+        "journal-dev-0056",
+        "journal-dev-0064",
+        "journal-dev-0072",
+        "journal-dev-0080",
+        "journal-dev-0088",
+        "journal-dev-0096",
+        "journal-dev-0104",
+        "journal-dev-0112",
+        "journal-dev-0120",
+        "journal-dev-0128",
+        "journal-dev-0136",
+        "journal-dev-0144",
+        "journal-dev-0152",
+        "journal-dev-0160",
+        "journal-dev-0168",
+        "journal-dev-0176",
+        "journal-dev-0184",
+        "journal-dev-0192",
+        "journal-dev-0200",
+        "journal-dev-0208",
+        "journal-dev-0216",
+        "journal-dev-0224",
+        "journal-dev-0232"
+      ]
+    }
+  ]
+}

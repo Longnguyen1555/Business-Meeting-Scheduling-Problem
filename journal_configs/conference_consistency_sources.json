@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "purpose": "Frozen camera-ready and conference result sources for the JAIR consistency gate",
+  "purpose": "Frozen conference manuscript and results for the reference comparison",
   "sources": [
     {
-      "path": "manuscript/conference_101719.tex",
+      "path": "frozen/conference/conference_101719.tex",
       "sha256": "2d7ffee7a120448306b5cef1727bd24d6b2785948d90c8348447c6c3883872f1",
-      "location": "workspace"
+      "location": "repository"
     },
     {
       "path": "output/ic12p-gcp-ic12p-20260723T023309Z-normalized/main/data_table03_origin_detailed.csv",
